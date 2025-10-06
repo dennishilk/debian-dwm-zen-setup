@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix Edition)
-# Includes: self-healing DWM binary check
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v3)
+# Includes: self-healing DWM source rebuild + visible font install
 # =============================================================
 set -e
 
@@ -23,15 +23,13 @@ else
 fi
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 
-# --- Remove Debian DWM package if present ------------------------------------
+# --- Remove Debian DWM package ----------------------------------------------
 if dpkg -l | grep -q "^ii\s\+dwm"; then
     echo "⚙️ Removing Debian DWM package..."
     sudo apt remove --purge -y dwm
-else
-    echo "✅ No Debian DWM package installed."
 fi
 
-# --- Base install ------------------------------------------------------------
+# --- Base system install -----------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg feh picom slstatus build-essential git curl wget \
     zram-tools alacritty unzip plymouth-themes grub2-common zsh lxappearance \
@@ -45,14 +43,18 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured"
 
-# --- Nerd Font ---------------------------------------------------------------
+# --- Nerd Font with visible progress ----------------------------------------
+echo "📦 Installing JetBrainsMono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
-sudo wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip
-sudo unzip -o JetBrainsMono.zip >/dev/null
-sudo fc-cache -fv >/dev/null
+if wget --show-progress -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip; then
+    sudo unzip -o JetBrainsMono.zip >/dev/null
+    sudo fc-cache -fv >/dev/null
+    echo "✅ JetBrainsMono Nerd Font installed"
+else
+    echo "❌ Failed to download Nerd Font (check connection)"
+fi
 cd ~
-echo "✅ JetBrainsMono Nerd Font installed"
 
 # --- Alacritty config --------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
@@ -104,19 +106,26 @@ slstatus &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
-# --- Minimal Xinit + Self-Healing Binary Check -------------------------------
+# --- Xinitrc with integrated DWM self-repair --------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
-# --- DWM Binary Self-Healing ---
+# --- DWM Self-Healing ---
 if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚠️ DWM missing! Rebuilding..."
-  if [ -d /usr/src/dwm ]; then
-    cd /usr/src/dwm && sudo make clean install
-  elif [ -d ~/dwm ]; then
-    cd ~/dwm && sudo make clean install
-  else
-    echo "❌ No DWM source found!"
+  echo "⚠️ DWM binary missing! Rebuilding..."
+  sudo mkdir -p /usr/src
+  if [ ! -d /usr/src/dwm ]; then
+    echo "🧱 Cloning DWM source..."
+    cd /usr/src && sudo git clone https://git.suckless.org/dwm
   fi
+  cd /usr/src/dwm
+  sudo cp config.def.h config.h 2>/dev/null || true
+  sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+  sudo sed -i 's|"st"|"alacritty"|g' config.h
+  if ! grep -q 'thunar' config.h; then
+    sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+  fi
+  sudo make clean install
+  sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
 fi
 
 xmodmap ~/.Xmodmap &
@@ -125,7 +134,7 @@ exec dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
-# --- Auto-start DWM on login -------------------------------------------------
+# --- Auto-start after login --------------------------------------------------
 for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
     if ! grep -q 'exec startx' "$f" 2>/dev/null; then
         echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
@@ -149,14 +158,12 @@ sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyz
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
-
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
-
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 echo "✅ ZSH + Starship ready"
 
@@ -172,20 +179,19 @@ gtk-application-prefer-dark-theme=1
 EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 
-# --- Clone + Build DWM -------------------------------------------------------
+# --- Ensure DWM source and binary now exist ---------------------------------
 if [ ! -d "/usr/src/dwm" ]; then
-    sudo git clone https://git.suckless.org/dwm /usr/src/dwm
-fi
-cd /usr/src/dwm
-sudo cp config.def.h config.h
-sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-sudo sed -i 's|"st"|"alacritty"|g' config.h
-if ! grep -q 'thunar' config.h; then
+    echo "🧱 Creating /usr/src/dwm from scratch..."
+    sudo mkdir -p /usr/src && cd /usr/src
+    sudo git clone https://git.suckless.org/dwm
+    cd dwm
+    sudo cp config.def.h config.h
+    sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+    sudo sed -i 's|"st"|"alacritty"|g' config.h
     sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+    sudo make clean install
 fi
-sudo make clean install
 sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
-echo "✅ Custom DWM installed and symlinked"
 
 # --- Mod4 key mapping --------------------------------------------------------
 cat > "$HOME_DIR/.Xmodmap" <<'EOF'
@@ -193,28 +199,6 @@ clear mod4
 keycode 133 = Super_L
 add mod4 = Super_L
 EOF
-
-# --- Self-healing DWM check script ------------------------------------------
-sudo tee /usr/local/bin/verify_dwm_binary.sh >/dev/null <<'EOF'
-#!/bin/bash
-# Auto-check DWM binary at each boot
-if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚠️ DWM binary missing, attempting rebuild..."
-  if [ -d /usr/src/dwm ]; then
-    cd /usr/src/dwm && make clean install
-  elif [ -d ~/dwm ]; then
-    cd ~/dwm && make clean install
-  else
-    echo "❌ DWM source not found!"
-  fi
-fi
-EOF
-sudo chmod +x /usr/local/bin/verify_dwm_binary.sh
-
-# Add to startup
-if ! grep -q verify_dwm_binary "$HOME_DIR/.bash_profile"; then
-  echo "/usr/local/bin/verify_dwm_binary.sh &" >> "$HOME_DIR/.bash_profile"
-fi
 
 # --- GRUB Dark ---------------------------------------------------------------
 sudo bash -c "cat > /etc/default/grub <<'EOF'
