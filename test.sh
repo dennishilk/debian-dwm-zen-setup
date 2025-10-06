@@ -207,25 +207,25 @@ notify-send "🧹 Maintenance complete" "Log saved to ~/Logs"
 EOF
 chmod +x "$HOME_DIR/.local/bin/maintenance.sh"
 
-# ----------[ 10. Build suckless stack – safe version ]-----------------
+# ----------[ 10. Build suckless stack – VM safe version ]--------------
 for repo in dwm dmenu slstatus; do
   mkdir -p "$HOME_DIR/.config/$repo"
   if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
+    echo "📦 Cloning $repo ..."
     git clone https://git.suckless.org/$repo "$HOME_DIR/.config/$repo"
   fi
   cd "$HOME_DIR/.config/$repo"
   cp -f config.def.h config.h 2>/dev/null || true
 
+  # ====== Patch DWM keybinds safely ======
   if [ "$repo" = "dwm" ]; then
-    echo "⚙️  Patching DWM keybinds safely..."
+    echo "⚙️  Patching DWM config ..."
     sed -i 's|#define MODKEY.*|#define MODKEY Mod4Mask|' config.h
     sed -i 's|"st"|"alacritty"|g' config.h
 
-    # Stelle sicher, dass die Einträge innerhalb der keys[]-Liste landen
     START_LINE=$(grep -n "static Key keys" config.h | cut -d: -f1)
     END_LINE=$(grep -n "^};" config.h | grep -A1 "$START_LINE" | tail -n1 | cut -d: -f1)
 
-    # Nur wenn Bereich existiert
     if [ -n "$START_LINE" ] && [ -n "$END_LINE" ]; then
       TMP_FILE=$(mktemp)
       head -n $((END_LINE - 1)) config.h > "$TMP_FILE"
@@ -244,8 +244,36 @@ KEYS
     fi
   fi
 
-  make clean all || { echo "❌ Build failed for $repo"; exit 1; }
+  echo "🛠️  Building $repo ..."
+  if ! make clean all; then
+    echo "❌ Build failed for $repo"
+    exit 1
+  fi
 done
+
+# ----------[ 10.1 Safe Terminal Fallback for VMs ]---------------------
+echo "🧩 Checking for Alacritty support..."
+if ! alacritty --version >/dev/null 2>&1; then
+  echo "⚠️  Alacritty not working (likely VM / no OpenGL). Installing xfce4-terminal fallback..."
+  sudo apt install -y xfce4-terminal
+  TERMINAL_CMD="xfce4-terminal"
+else
+  TERMINAL_CMD="alacritty"
+fi
+
+# Patch DWM terminal command automatically
+DWM_CFG="$HOME_DIR/.config/dwm/config.h"
+if [ -f "$DWM_CFG" ]; then
+  echo "🔧 Setting terminal to: $TERMINAL_CMD"
+  sed -i "s|\"st\"|\"$TERMINAL_CMD\"|g" "$DWM_CFG"
+  sed -i "s|\"alacritty\"|\"$TERMINAL_CMD\"|g" "$DWM_CFG"
+  cd "$HOME_DIR/.config/dwm"
+  make clean all
+fi
+
+echo "✅ DWM terminal launcher configured for: $TERMINAL_CMD"
+echo "───────────────────────────────────────────────"
+
 
 
 # ----------[ 11. Autostart ]-------------------------------------------
