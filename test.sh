@@ -1,10 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8)
-#  - DWM self-healing + absolute path
-#  - Safe Mode (for GPU-less VMs)
-#  - Alacritty + transparent config
-#  - ZSH + Oh My ZSH + Starship
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.1)
 # =============================================================
 set -e
 
@@ -32,7 +28,7 @@ else
   echo "💻 GPU detected → normal mode with Alacritty & Picom"
 fi
 
-# --- Base system packages ---------------------------------------------------
+# --- Base packages ----------------------------------------------------------
 sudo apt update -y
 sudo apt install -y xorg feh picom slstatus build-essential git curl wget unzip \
   libx11-dev libxft-dev libxinerama-dev zram-tools zsh lxappearance \
@@ -166,15 +162,19 @@ if [ ! -x /usr/local/bin/dwm ]; then
 fi
 sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
 
-# --- ZSH + Starship ---------------------------------------------------------
-echo "🐚 Installing ZSH + Starship..."
+# --- ZSH + Oh My Zsh + Starship + Alacritty Shell Fix -----------------------
+echo "🐚 Installing ZSH + Starship (Alacritty default shell)..."
+
 sudo apt install -y zsh git curl
 if [ ! -d "$HOME_DIR/.oh-my-zsh" ]; then
   sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
   sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
   sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 fi
-bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
+if ! command -v starship >/dev/null; then
+  bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
+fi
+
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
@@ -182,6 +182,18 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
+
+# Force Alacritty to launch ZSH
+mkdir -p "$HOME_DIR/.config/alacritty"
+if ! grep -q 'shell]' "$HOME_DIR/.config/alacritty/alacritty.toml" 2>/dev/null; then
+  cat >> "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
+
+[shell]
+program = "/usr/bin/zsh"
+args = ["--login"]
+EOF
+fi
+echo "✅ Alacritty now launches ZSH with Starship prompt."
 
 # --- GTK Dark ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
