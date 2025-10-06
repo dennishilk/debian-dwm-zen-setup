@@ -184,47 +184,59 @@ esac
 EOF
 chmod +x "$HOME_DIR/.local/bin/quick-settings.sh"
 
-# ---[ 8.3 Lock Screen (Super+L) – Smart Blur Lock ]--------------------
+# ---[ 8.3 Lock Screen (Super+L) – Build i3lock-color from GitHub ]------
+echo "🔐 Installing i3lock-color from GitHub..."
+sudo apt install -y \
+  autoconf automake pkg-config libev-dev libxcb-composite0-dev \
+  libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-x11-dev libjpeg-dev \
+  libpam0g-dev libcairo2-dev libxcb-util0-dev libxcb-image0-dev \
+  libxcb-randr0-dev libxcb-xrm-dev libxcb-shape0-dev libxcb-icccm4-dev \
+  libxcb-keysyms1-dev
+
+if [ ! -d "/tmp/i3lock-color" ]; then
+  git clone https://github.com/Raymo111/i3lock-color.git /tmp/i3lock-color
+else
+  git -C /tmp/i3lock-color pull
+fi
+cd /tmp/i3lock-color
+./build.sh
+sudo make install
+cd -
+
 cat > "$HOME_DIR/.local/bin/lock-blur.sh" <<'EOF'
 #!/bin/bash
 WALL=/usr/share/backgrounds/wallpaper.png
 TMPBG=/tmp/lock_blur.png
 
-# Blur wallpaper or use plain black background
+# Blur wallpaper or fallback to solid
 if [ -f "$WALL" ]; then
   convert "$WALL" -blur 0x8 "$TMPBG"
 else
   convert -size 1920x1080 xc:black "$TMPBG"
 fi
 
-# Smart fallback: prefer i3lock-color, else plain i3lock
-if command -v i3lock-color >/dev/null 2>&1; then
-  i3lock-color -i "$TMPBG" \
-    --clock \
-    --insidecolor=00000066 \
-    --ringcolor=00ff99aa \
-    --timecolor=ffffffff \
-    --datecolor=ffffffff \
-    --line-uses-inside
-else
-  i3lock -i "$TMPBG"
-fi
+# Run i3lock-color with nerdy glow
+i3lock-color -i "$TMPBG" \
+  --clock \
+  --radius=120 \
+  --ringvercolor=00ff99ff \
+  --ringwrongcolor=ff0066ff \
+  --ringcolor=00ff99aa \
+  --insidecolor=00000066 \
+  --keyhlcolor=00ff99ff \
+  --bshlcolor=ff0066ff \
+  --line-uses-inside \
+  --timecolor=ffffffff \
+  --datecolor=ffffffff \
+  --timesize=48 \
+  --datesize=24 \
+  --indicator \
+  --nofork
 
-# Clean up temp image
-sleep 1 && rm -f "$TMPBG"
+rm -f "$TMPBG"
 EOF
 chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
-
-# optional: try to install i3lock-color if package available
-if ! command -v i3lock-color >/dev/null 2>&1; then
-  if apt-cache show i3lock-color >/dev/null 2>&1; then
-    sudo apt install -y i3lock-color
-  else
-    echo "ℹ️  i3lock-color not in repo, falling back to normal i3lock."
-    sudo apt install -y i3lock
-  fi
-fi
-
+sudo chown "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local/bin/lock-blur.sh"
 
 # ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
 cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
@@ -257,6 +269,7 @@ echo "Done."
 notify-send "🧹 Maintenance complete" "Log saved to ~/Logs"
 EOF
 chmod +x "$HOME_DIR/.local/bin/maintenance.sh"
+
 # ----------[ 9. DWM / DMENU / SLSTATUS – Build local ]------------------
 echo "🔧 Building DWM, DMENU, SLSTATUS (local config build)..."
 
