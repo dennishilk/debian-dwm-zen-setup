@@ -1,14 +1,14 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty (TOML) + Picom Transparency
-# Author: Dennis Hilk
-# License: MIT
+# DWM + Zen Kernel (Liquorix) + GPU (NVIDIA/AMD/None)
+# + ZRAM + Alacritty (TOML) + Picom transparency (neon blue)
+# Author: Dennis Hilk • License: MIT
 # =============================================================
 
 set -e
 
-# --- 1️⃣ Repositories ---------------------------------------------------------
+# --- 1️⃣  Debian repositories -------------------------------------------------
 echo "=== 🧩 1. Configure Debian repositories ==="
 CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
 sudo bash -c "cat > /etc/apt/sources.list <<EOF
@@ -20,56 +20,48 @@ EOF"
 
 sudo apt update && sudo apt full-upgrade -y
 
-# --- 2️⃣ Base tools + ZRAM ----------------------------------------------------
-echo "=== ⚙️ 2. Installing base tools and ZRAM ==="
+# --- 2️⃣  Base tools + ZRAM ---------------------------------------------------
+echo "=== ⚙️ 2. Installing base tools and enabling ZRAM ==="
 sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg \
   lsb-release apt-transport-https zram-tools
 
-echo "=== 🧠 Enabling and configuring ZRAM ==="
 sudo systemctl enable --now zramswap.service
-if [ -f /etc/default/zramswap ]; then
-  sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
-  sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
-  sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
-  echo "✅ ZRAM configured (zstd, 50% RAM, priority 100)"
-fi
+sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
+sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
+sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
+echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
 
-# --- 3️⃣ DWM + Desktop tools ---------------------------------------------------
-echo "=== 💻 3. Installing DWM and desktop utilities ==="
+# --- 3️⃣  DWM + Desktop tools -------------------------------------------------
+echo "=== 💻 3. Installing DWM and utilities ==="
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus mesa-utils vulkan-tools
 
-# --- 4️⃣ Zen Kernel (Liquorix signed) ----------------------------------------
+# --- 4️⃣  Zen Kernel ----------------------------------------------------------
 echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix, signed) ==="
-sudo rm -f /etc/apt/sources.list.d/liquorix.list
 sudo mkdir -p /usr/share/keyrings
 curl -fsSL https://liquorix.net/liquorix-keyring.gpg | \
   sudo gpg --dearmor -o /usr/share/keyrings/liquorix-keyring.gpg
 echo "deb [signed-by=/usr/share/keyrings/liquorix-keyring.gpg] http://liquorix.net/debian sid main" | \
   sudo tee /etc/apt/sources.list.d/liquorix.list
-
 sudo apt update
 sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || \
-  echo "⚠️  Liquorix kernel not available – keeping default kernel."
+  echo "⚠️ Liquorix kernel not available – keeping default kernel."
 
-# --- 5️⃣ Wallpaper ------------------------------------------------------------
-echo "=== 🖼️ 5. Setting up wallpaper ==="
+# --- 5️⃣  Wallpaper -----------------------------------------------------------
+echo "=== 🖼️ 5. Installing wallpaper ==="
+sudo mkdir -p /usr/share/backgrounds
 if [ -f "./coding-2.png" ]; then
-  sudo mkdir -p /usr/share/backgrounds
   sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
-  echo "✅ Wallpaper installed: /usr/share/backgrounds/wallpaper.png"
+  echo "✅ Wallpaper installed."
 else
-  echo "⚠️  coding-2.png not found – please copy manually later."
+  echo "⚠️ coding-2.png missing – copy later to /usr/share/backgrounds/wallpaper.png"
 fi
 
-# --- 6️⃣ Install Alacritty ----------------------------------------------------
-echo "=== 🌈 6. Installing Alacritty (GPU-accelerated terminal) ==="
-sudo apt install -y alacritty || {
-  echo "⚠️  Alacritty not found – falling back to stterm."
-  sudo apt install -y stterm
-}
+# --- 6️⃣  Alacritty -----------------------------------------------------------
+echo "=== 🌈 6. Installing Alacritty terminal ==="
+sudo apt install -y alacritty || { sudo apt install -y stterm; }
 
-# --- 7️⃣ Configure Alacritty (TOML) + Picom -----------------------------------
-echo "=== 🎨 7. Creating Alacritty (TOML) + Picom configs ==="
+# --- 7️⃣  Alacritty (TOML) + Picom configs -----------------------------------
+echo "=== 🎨 7. Creating Alacritty (TOML) and Picom configs ==="
 mkdir -p ~/.config/alacritty
 cat > ~/.config/alacritty/alacritty.toml <<'EOF'
 [window]
@@ -83,12 +75,21 @@ normal = { family = "monospace", style = "Regular" }
 size = 11.0
 
 [colors.primary]
-background = "0x000000"
+background = "0x0a0a0a"
 foreground = "0xffffff"
 
+[colors.cursor]
+text = "0x0a0a0a"
+cursor = "0x00ccff"
+
 [cursor]
-text = "0x000000"
-cursor = "0xffffff"
+blink_interval = 500
+unfocused_hollow = true
+thickness = 0.15
+
+[cursor.style]
+shape = "Block"
+blinking = "On"
 
 [scrolling]
 history = 10000
@@ -105,15 +106,17 @@ detect-transient = true;
 use-damage = true;
 corner-radius = 6;
 round-borders = 1;
-opacity-rule = [
-  "90:class_g = 'Alacritty'",
-];
+shadow = true;
+shadow-radius = 12;
+shadow-color = "#00ccff";
+shadow-opacity = 0.35;
+opacity-rule = [ "90:class_g = 'Alacritty'" ];
 fade-in-step = 0.03;
 fade-out-step = 0.03;
 EOF
 
-# --- 8️⃣ DWM Autostart --------------------------------------------------------
-echo "=== ⚙️ 8. Configuring DWM autostart and Xinitrc ==="
+# --- 8️⃣  DWM autostart ------------------------------------------------------
+echo "=== ⚙️ 8. Configuring DWM autostart ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
 #!/bin/bash
@@ -129,47 +132,4 @@ cat > ~/.xinitrc <<'EOF'
 ~/.dwm/autostart.sh &
 exec dwm
 EOF
-chmod +x ~/.xinitrc
-
-# --- 9️⃣ Auto-login -----------------------------------------------------------
-echo "=== 🔧 9. Enabling auto-login to DWM on tty1 ==="
-PROFILE=/home/$USER/.bash_profile
-grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
-
-# --- 🔟 GPU Setup ------------------------------------------------------------
-echo
-echo "🎮 GPU Setup Assistant"
-echo "------------------------"
-echo "Choose your GPU driver:"
-echo "  [1] NVIDIA (RTX / GTX)"
-echo "  [2] AMD (Radeon / RX / Vega)"
-echo "  [3] None – skip GPU setup"
-read -p "Select (1/2/3): " gpu_choice
-
-case "$gpu_choice" in
-  1)
-    echo "=== 🧩 Installing NVIDIA drivers ==="
-    sudo apt install -y linux-headers-$(uname -r) \
-      nvidia-driver nvidia-smi nvidia-settings nvidia-cuda-toolkit libnvidia-encode1
-    sudo apt install -y ffmpeg nv-codec-headers || true
-    ;;
-  2)
-    echo "=== 🧩 Installing AMD drivers ==="
-    sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
-      libdrm-amdgpu1 mesa-utils libgl1-mesa-dri
-    sudo apt install -y ffmpeg mesa-va-drivers vainfo || true
-    ;;
-  3)
-    echo "❎ GPU setup skipped."
-    ;;
-  *)
-    echo "⚠️ Invalid choice – skipping GPU setup."
-    ;;
-esac
-
-# --- ✅ Done -----------------------------------------------------------------
-echo
-echo "✅ Installation complete!"
-echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty (TOML) transparency."
-echo "Reboot now to apply changes:"
-echo "  sudo reboot"
+chmod +x ~/.xin
