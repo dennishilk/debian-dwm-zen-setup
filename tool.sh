@@ -8,7 +8,11 @@ LOGFILE="$HOME/tool_install.log"
 
 # --- prerequisites -----------------------------------------------------------
 sudo apt update -y >/dev/null
-sudo apt install -y dialog curl wget flatpak software-properties-common ca-certificates gpg >/dev/null
+sudo apt install -y dialog curl wget flatpak ca-certificates gpg >/dev/null
+sudo apt install -y software-properties-common >/dev/null 2>&1 || \
+sudo apt install -y python3-software-properties >/dev/null 2>&1 || \
+echo "⚠️ software-properties-common not available (skipped)"
+
 
 # --- helper ------------------------------------------------------------------
 install_pkg() {
