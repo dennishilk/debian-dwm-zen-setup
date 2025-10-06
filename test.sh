@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Final Edition)
-# Includes: ZSH + Starship, Thunar, Alacritty, Auto-start + Keybind fix
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Ultimate Edition)
+# Includes: ZSH + Starship + Thunar + Alacritty + Auto-start + Self-check
 # =============================================================
 
 set -e
@@ -112,7 +112,7 @@ for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; d
         echo "→ Added auto-start line to $f"
     fi
 done
-echo "✅ Auto-start configured (no manual startx needed)"
+echo "✅ Auto-start configured"
 
 # --- GPU setup ---------------------------------------------------------------
 echo
@@ -173,13 +173,12 @@ EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 echo "✅ GTK Dark Theme enabled (Adwaita-dark + Papirus-Dark)"
 
-# --- Fix DWM keybinds --------------------------------------------------------
+# --- DWM keybind fix ---------------------------------------------------------
 if [ -d "/usr/src/dwm" ]; then
     DWM_DIR="/usr/src/dwm"
 elif [ -d "$HOME_DIR/dwm" ]; then
     DWM_DIR="$HOME_DIR/dwm"
 else
-    echo "⚠️  DWM source not found, skipping keybind patch."
     DWM_DIR=""
 fi
 
@@ -187,26 +186,15 @@ if [ -n "$DWM_DIR" ]; then
     echo "🔧 Updating DWM keybinds..."
     cd "$DWM_DIR"
     sudo cp config.h config.h.bak
-    if grep -q '"st"' config.h; then
-        sudo sed -i 's|"st"|"alacritty"|g' config.h
-    fi
+    sudo sed -i 's|"st"|"alacritty"|g' config.h
     if ! grep -q 'thunar' config.h; then
         sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
     fi
-    if ! grep -q 'XK_Return' config.h; then
-        cat <<'EOF' | sudo tee -a config.h >/dev/null
-static const char *termcmd[]  = { "alacritty", NULL };
-static Key keys[] = {
-    { MODKEY, XK_Return, spawn, {.v = termcmd } },
-    { MODKEY, XK_t,      spawn, SHCMD("thunar") },
-};
-EOF
-    fi
     sudo make clean install
-    echo "✅ DWM rebuilt with working Super+Return and Super+T"
+    echo "✅ DWM rebuilt (Super+Return + Super+T)"
 fi
 
-# --- GRUB + Plymouth ---------------------------------------------------------
+# --- GRUB Dark ---------------------------------------------------------------
 sudo bash -c "cat > /etc/default/grub <<'EOF'
 GRUB_DEFAULT=0
 GRUB_TIMEOUT_STYLE=menu
@@ -222,15 +210,33 @@ sudo update-grub
 sudo plymouth-set-default-theme spinner
 sudo update-initramfs -u
 
-# --- Final summary -----------------------------------------------------------
+# --- Final ownership ---------------------------------------------------------
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
+
+# --- ✅ SELF-CHECK ------------------------------------------------------------
 echo
-echo "🎉 Installation complete!"
-echo "💻 Auto-start: DWM starts automatically on login (no startx)"
-echo "💀 ZSH + Starship prompt ready"
-echo "🗂️  Super+T → Thunar (dark theme)"
+echo "🔍 Running self-check..."
+
+# Check auto-start line
+grep -q 'exec startx' "$HOME_DIR/.bash_profile" && echo "✅ Auto-start line present" || echo "❌ Auto-start missing"
+
+# Check keybinds
+grep -q 'thunar' "$DWM_DIR/config.h" && echo "✅ Super+T configured" || echo "❌ Missing Thunar keybind"
+grep -q 'alacritty' "$DWM_DIR/config.h" && echo "✅ Super+Return configured" || echo "❌ Terminal key missing"
+
+# Check core components
+command -v zsh >/dev/null && echo "✅ ZSH installed" || echo "❌ ZSH missing"
+command -v starship >/dev/null && echo "✅ Starship installed" || echo "❌ Starship missing"
+command -v thunar >/dev/null && echo "✅ Thunar installed" || echo "❌ Thunar missing"
+command -v alacritty >/dev/null && echo "✅ Alacritty installed" || echo "❌ Alacritty missing"
+command -v picom >/dev/null && echo "✅ Picom installed" || echo "❌ Picom missing"
+
+echo
+echo "🎉 All done!"
+echo "💻 Auto-start active"
+echo "🗂️  Super+T → Thunar"
 echo "💻 Super+Return → Alacritty"
 echo "🌈 GTK: Adwaita-dark + Papirus-Dark"
 echo
-echo "Reboot now to enjoy your new desktop:"
+echo "Reboot to test automatic DWM startup:"
 echo "  sudo reboot"
