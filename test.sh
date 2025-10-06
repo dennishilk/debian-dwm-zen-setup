@@ -205,13 +205,11 @@ fi
 # Lock the screen
 i3lock -i "$TMPBG"
 
-# Clean up
+# Clean up temp image
 sleep 1 && rm -f "$TMPBG"
 EOF
-
 chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
 sudo chown "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local/bin/lock-blur.sh"
-
 
 # ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
 cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
@@ -244,57 +242,6 @@ echo "Done."
 notify-send "🧹 Maintenance complete" "Log saved to ~/Logs"
 EOF
 chmod +x "$HOME_DIR/.local/bin/maintenance.sh"
-
-# ----------[ 9. DWM / DMENU / SLSTATUS – Build local ]------------------
-echo "🔧 Building DWM, DMENU, SLSTATUS (local config build)..."
-
-for repo in dwm dmenu slstatus; do
-  mkdir -p "$HOME_DIR/.config/$repo"
-  if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
-    git clone https://git.suckless.org/$repo "$HOME_DIR/.config/$repo"
-  else
-    git -C "$HOME_DIR/.config/$repo" pull
-  fi
-  cd "$HOME_DIR/.config/$repo"
-  cp config.def.h config.h 2>/dev/null || true
-
-  # --- Custom Keybindings (Dennis Edition) ---
-  if [ "$repo" = "dwm" ]; then
-    sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h        # Super key as MOD
-    sed -i 's|"st"|"alacritty"|g' config.h
-    sed -i 's|"xterm"|"alacritty"|g' config.h
-
-    # Super + Return → Alacritty
-    if ! grep -q 'XK_Return' config.h; then
-      echo '    { MODKEY, XK_Return, spawn, SHCMD("alacritty") },' >> config.h
-    fi
-    # Super + T → Thunar
-    if ! grep -q 'XK_t' config.h; then
-      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
-    fi
-    # Super + M → Control Center
-    if ! grep -q 'XK_m' config.h; then
-      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_m, spawn, SHCMD("dwm-control.sh") },' config.h
-    fi
-    # Super + N → Quick Settings
-    if ! grep -q 'XK_n' config.h; then
-      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_n, spawn, SHCMD("quick-settings.sh") },' config.h
-    fi
-    # Super + L → Lock
-    if ! grep -q 'XK_l' config.h; then
-      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_l, spawn, SHCMD("lock-blur.sh") },' config.h
-    fi
-    # Super + S → Screenshot
-    if ! grep -q 'XK_s' config.h; then
-      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_s, spawn, SHCMD("screenshot.sh") },' config.h
-    fi
-  fi
-
-  make clean all
-  chmod +x "$HOME_DIR/.config/$repo/$repo"
-done
-
-echo "✅ DWM, DMENU, SLSTATUS built & installed locally."
 
 # ----------[ 10. Autostart Script – ~/.dwm/autostart.sh ]---------------
 mkdir -p "$HOME_DIR/.dwm"
