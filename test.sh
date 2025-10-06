@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.4)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.5)
 #  - Local builds in ~/.config/{dwm,dmenu,slstatus}
-#  - Non-interactive ZSH + Starship setup
-#  - Safe mode support for VMs (xrender + xterm)
+#  - Non-interactive ZSH + Starship
+#  - Safe-Mode-Support for VMs (xrender + xterm)
 # =============================================================
 set -e
 
@@ -73,7 +73,6 @@ foreground = "0xcccccc"
 [colors.cursor]
 text = "0x0a0a0a"
 cursor = "0x00ff99"
-
 [shell]
 program = "/usr/bin/zsh"
 args = ["--login"]
@@ -170,31 +169,25 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- ZSH + Starship (non-interactive) --------------------------------------
-echo "🐚 Installing ZSH + Starship (non-interactive)..."
-
+# --- ZSH + Starship (safe non-interactive) ----------------------------------
+echo "🐚 Installing ZSH + Starship (safe non-interactive)..."
 sudo apt install -y zsh git curl
 ZSH_DIR="$HOME_DIR/.oh-my-zsh"
 if [ ! -d "$ZSH_DIR" ]; then
-  echo "📦 Cloning Oh My Zsh manually..."
   git clone https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR"
   git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_DIR/custom/plugins/zsh-syntax-highlighting"
   git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_DIR/custom/plugins/zsh-autosuggestions"
 fi
-
 if ! command -v starship >/dev/null; then
-  echo "📦 Installing Starship prompt..."
   curl -fsSL https://starship.rs/install.sh | bash -s -- -y >/dev/null 2>&1
 fi
-
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
-sudo chsh -s /usr/bin/zsh "$REAL_USER"
-echo "✅ ZSH installed (non-interactive)."
+echo "✅ ZSH + Starship configured (shell switch deferred)."
 
 # --- GTK Dark ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
@@ -223,6 +216,14 @@ echo "🔍 Final check..."
 command -v alacritty >/dev/null && echo "✅ Alacritty ok"
 command -v zsh >/dev/null && echo "✅ ZSH ok"
 command -v starship >/dev/null && echo "✅ Starship ok"
+
+# --- Set ZSH as default shell silently --------------------------------------
+(
+  sleep 1
+  sudo chsh -s /usr/bin/zsh "$REAL_USER" >/dev/null 2>&1
+  echo "✅ Default shell changed to ZSH for $REAL_USER"
+) &
+
 echo
 echo "🎉 Installation complete!"
 echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
