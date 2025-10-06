@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.8)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.9)
 #  - Local builds in ~/.config/{dwm,dmenu,slstatus}
-#  - Fish Shell + Starship + Nerd Banner
+#  - Fish Shell (no Starship)
 #  - Safe Mode for VMs
 # =============================================================
 set -e
@@ -170,21 +170,15 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- Starship prompt --------------------------------------------------------
-echo "🚀 Installing Starship prompt..."
-curl -fsSL https://starship.rs/install.sh | bash -s -- -y >/dev/null 2>&1
-mkdir -p "$HOME_DIR/.config/fish"
+# --- Fish setup -------------------------------------------------------------
+echo "🐟 Setting Fish shell as default..."
 chsh -s /usr/bin/fish "$REAL_USER"
 
-# --- Nerd Banner (Fish config) ---------------------------------------------
+mkdir -p "$HOME_DIR/.config/fish"
 cat > "$HOME_DIR/.config/fish/config.fish" <<'EOF'
 # =============================================================
-# 🐟 Fish Nerd Setup (auto user detection)
+# 🐟 Fish Nerd Setup (auto user detection, no Starship)
 # =============================================================
-
-if type -q starship
-    starship init fish | source
-end
 
 set user (whoami)
 set hostname (hostname)
@@ -203,7 +197,7 @@ set system_days (math "($now_epoch - $install_epoch) / 86400")
 set_color cyan
 echo "───────────────────────────────────────────────"
 echo "🐧 Welcome back, $user@$hostname!"
-echo "💻 DWM + Alacritty | (Fish + Starship)"
+echo "💻 DWM + Alacritty | Fish Shell"
 echo "🕒 Uptime (current session): $uptime_now"
 echo "📅 Installed: $install_date"
 echo "⏳ System age: (approx.) $system_days days"
@@ -212,7 +206,7 @@ echo "────────────────────────�
 set_color normal
 
 if type -q fastfetch
-    fastfetch --logo none --structure OS:Host:Kernel:Shell:DE:WM:Uptime:Memory
+    fastfetch --logo none --structure OS:Host:Kernel:Shell:WM:Uptime:Memory
 else
     echo "(Tip: install fastfetch for extended system info)"
 end
@@ -265,10 +259,9 @@ echo "🔍 Final check..."
 [ -x "$HOME_DIR/.config/slstatus/slstatus" ] && echo "✅ SLSTATUS ok" || echo "❌ SLSTATUS missing"
 command -v alacritty >/dev/null && echo "✅ Alacritty ok"
 command -v fish >/dev/null && echo "✅ Fish ok"
-command -v starship >/dev/null && echo "✅ Starship ok"
 echo
 echo "🎉 Installation complete!"
-echo "🐟 Fish + Starship active"
+echo "🐟 Fish Shell active"
 echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
