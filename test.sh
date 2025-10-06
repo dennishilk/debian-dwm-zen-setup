@@ -1,7 +1,7 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM (Signed Repos)
+# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Auto-Terminal (Transparent)
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
@@ -20,7 +20,7 @@ EOF"
 
 sudo apt update && sudo apt full-upgrade -y
 
-# --- 2️⃣ Basispakete + ZRAM ---------------------------------------------------
+# --- 2️⃣ Base tools + ZRAM ----------------------------------------------------
 echo "=== ⚙️ 2. Installing base tools and ZRAM ==="
 sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg \
   lsb-release apt-transport-https zram-tools
@@ -34,28 +34,18 @@ if [ -f /etc/default/zramswap ]; then
   echo "✅ ZRAM configured (zstd, 50% RAM, priority 100)"
 fi
 
-# --- 3️⃣ DWM + Tools ----------------------------------------------------------
+# --- 3️⃣ DWM + Desktop tools ---------------------------------------------------
 echo "=== 💻 3. Installing DWM and desktop utilities ==="
 sudo apt install -y xorg dwm suckless-tools stterm feh picom slstatus mesa-utils vulkan-tools
 
-# --- 4️⃣ Zen Kernel (Liquorix, signed) ---------------------------------------
+# --- 4️⃣ Zen Kernel (Liquorix signed) ----------------------------------------
 echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix, signed) ==="
-
-if command -v add-apt-repository >/dev/null 2>&1; then
-  echo "→ Using add-apt-repository"
-  sudo add-apt-repository -y ppa:damentz/liquorix || true
-else
-  echo "→ Manually adding signed Liquorix repository"
-  # Remove any unsigned version
-  sudo rm -f /etc/apt/sources.list.d/liquorix.list
-  # Add key securely
-  sudo mkdir -p /usr/share/keyrings
-  curl -fsSL https://liquorix.net/liquorix-keyring.gpg | \
-    sudo gpg --dearmor -o /usr/share/keyrings/liquorix-keyring.gpg
-  # Add signed repo entry
-  echo "deb [signed-by=/usr/share/keyrings/liquorix-keyring.gpg] http://liquorix.net/debian sid main" | \
-    sudo tee /etc/apt/sources.list.d/liquorix.list
-fi
+sudo rm -f /etc/apt/sources.list.d/liquorix.list
+sudo mkdir -p /usr/share/keyrings
+curl -fsSL https://liquorix.net/liquorix-keyring.gpg | \
+  sudo gpg --dearmor -o /usr/share/keyrings/liquorix-keyring.gpg
+echo "deb [signed-by=/usr/share/keyrings/liquorix-keyring.gpg] http://liquorix.net/debian sid main" | \
+  sudo tee /etc/apt/sources.list.d/liquorix.list
 
 sudo apt update
 sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || \
@@ -71,7 +61,7 @@ else
   echo "⚠️  coding-2.png not found – please copy manually later."
 fi
 
-# --- 6️⃣ DWM Autostart --------------------------------------------------------
+# --- 6️⃣ DWM Autostart (with transparency + auto-terminal) --------------------
 echo "=== ⚙️ 6. Configuring DWM autostart and Xinitrc ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
@@ -79,7 +69,18 @@ cat > ~/.dwm/autostart.sh <<'EOF'
 feh --bg-scale /usr/share/backgrounds/wallpaper.png &
 picom --experimental-backends &
 slstatus &
+# --- Automatic terminal with transparency ---
+stterm -A 0.8 &
 EOF
+
+# Auto-terminal only if virtualized (Proxmox)
+if systemd-detect-virt -q; then
+  echo "💻 Detected virtual environment – keeping auto-terminal enabled."
+else
+  # On bare metal, comment it out
+  sed -i 's/^stterm/# stterm/' ~/.dwm/autostart.sh
+fi
+
 chmod +x ~/.dwm/autostart.sh
 
 cat > ~/.xinitrc <<'EOF'
@@ -94,7 +95,7 @@ echo "=== 🔧 7. Enabling auto-login to DWM on tty1 ==="
 PROFILE=/home/$USER/.bash_profile
 grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
 
-# --- 8️⃣ GPU Auswahl ----------------------------------------------------------
+# --- 8️⃣ GPU Setup ------------------------------------------------------------
 echo
 echo "🎮 GPU Setup Assistant"
 echo "------------------------"
@@ -110,14 +111,12 @@ case "$gpu_choice" in
     sudo apt install -y linux-headers-$(uname -r) \
       nvidia-driver nvidia-smi nvidia-settings nvidia-cuda-toolkit libnvidia-encode1
     sudo apt install -y ffmpeg nv-codec-headers || true
-    echo "🔍 Test with: nvidia-smi"
     ;;
   2)
     echo "=== 🧩 Installing AMD drivers ==="
     sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
       libdrm-amdgpu1 mesa-utils libgl1-mesa-dri
     sudo apt install -y ffmpeg mesa-va-drivers vainfo || true
-    echo "🔍 Test with: vainfo | grep Driver"
     ;;
   3)
     echo "❎ GPU setup skipped."
@@ -127,9 +126,10 @@ case "$gpu_choice" in
     ;;
 esac
 
-# --- 9️⃣ Abschluss ------------------------------------------------------------
+# --- 9️⃣ Done -----------------------------------------------------------------
 echo
 echo "✅ Installation complete!"
-echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix, signed) + ZRAM."
-echo "Reboot to apply all changes:"
+echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM."
+echo "If running inside Proxmox, a transparent terminal opens automatically at login."
+echo "Reboot now to apply changes:"
 echo "  sudo reboot"
