@@ -1,13 +1,20 @@
 #!/bin/bash
-# =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.9.2)
-#  - Local builds in ~/.config/{dwm,dmenu,slstatus}
-#  - Fish Shell (no Starship)
-#  - Auto DWM start from Fish (no manual startx)
-# =============================================================
+# ======================================================================
+#  🧠 Debian 13 DWM – Nerd OS Deluxe (v9.1)
+#  by Dennis Hilk & ChatGPT (GPT-5)
+#
+#  ✨ Inhalt:
+#   - DWM + dmenu + slstatus (lokal in ~/.config)
+#   - Fish Shell (Auto startx, Nerd Infos)
+#   - Alacritty (transparent, TOML, Fish)
+#   - Control Center (Super+M), Quick Settings (Super+N)
+#   - Screenshot Tool (Super+S), Lock Screen (Super+L)
+#   - Maintenance Tools, Notifications, Wallpaper Blur
+# ======================================================================
+
 set -e
 
-# --- user detection ---------------------------------------------------------
+# ----------[ 0. User Detection ]---------------------------------------
 if [ "$EUID" -eq 0 ]; then
   REAL_USER=$(logname)
   HOME_DIR=$(eval echo "~$REAL_USER")
@@ -15,9 +22,9 @@ else
   REAL_USER=$USER
   HOME_DIR=$HOME
 fi
-echo "👤 User: $REAL_USER ($HOME_DIR)"
+echo "👤 User: $REAL_USER | HOME=$HOME_DIR"
 
-# --- GPU detection ----------------------------------------------------------
+# ----------[ 1. GPU/VM Detection → Picom Backend ]----------------------
 SAFE_MODE=false
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
   PICOM_BACKEND="xrender"
@@ -26,39 +33,40 @@ else
   PICOM_BACKEND="glx"
   if ! lspci | grep -qiE 'vga|3d|nvidia|amd|intel'; then SAFE_MODE=true; fi
 fi
-if $SAFE_MODE; then
-  echo "🧩 Safe Mode: using xterm & no picom"
-else
-  echo "💻 GPU detected → Alacritty & Picom enabled"
-fi
+echo "🖥️ Picom backend preset: $PICOM_BACKEND | SAFE_MODE=$SAFE_MODE"
 
-# --- Base packages ----------------------------------------------------------
+# ----------[ 2. Base Packages (apt) ]-----------------------------------
+echo "📦 Installing base system + dependencies..."
 sudo apt update -y
-sudo apt install -y xorg feh picom build-essential git curl wget unzip \
-  libx11-dev libxft-dev libxinerama-dev zram-tools fish lxappearance \
+sudo apt install -y \
+  xorg feh picom build-essential git curl wget unzip ca-certificates \
+  libx11-dev libxft-dev libxinerama-dev \
+  zram-tools fish lxappearance \
   gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
-  thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates fastfetch
+  thunar thunar-volman gvfs gvfs-backends gvfs-fuse \
+  fastfetch libnotify-bin i3lock-color imagemagick maim slop xclip \
+  alsa-utils brightnessctl
 
-# --- ZRAM -------------------------------------------------------------------
+# ----------[ 3. ZRAM Setup ]-------------------------------------------
 sudo systemctl enable --now zramswap.service
 sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
-echo "✅ ZRAM configured"
-
-# --- Nerd Font --------------------------------------------------------------
-echo "📦 Installing JetBrains Mono Nerd Font..."
+echo "✅ ZRAM active (50%, zstd)"
+# ----------[ 4. Nerd Font – JetBrainsMono Nerd ]------------------------
+echo "🎨 Installing JetBrainsMono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
-URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip"
-sudo wget -q "$URL" -O JetBrainsMono.zip || true
+JB_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip"
+sudo wget -q "$JB_URL" -O JetBrainsMono.zip || true
 sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
 sudo fc-cache -fv >/dev/null 2>&1
-cd ~
+cd -
 
-# --- Alacritty --------------------------------------------------------------
+# ----------[ 5. Alacritty Config (TOML + Fish) ]------------------------
 sudo apt install -y alacritty
 mkdir -p "$HOME_DIR/.config/alacritty"
+rm -f "$HOME_DIR/.config/alacritty/alacritty.yml" 2>/dev/null || true
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
 opacity = 0.85
@@ -73,13 +81,12 @@ foreground = "0xcccccc"
 [colors.cursor]
 text = "0x0a0a0a"
 cursor = "0x00ff99"
-
 [shell]
 program = "/usr/bin/fish"
 args = ["--login"]
 EOF
 
-# --- Picom ------------------------------------------------------------------
+# ----------[ 6. Picom Config ]------------------------------------------
 mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/picom.conf" <<EOF
 backend = "${PICOM_BACKEND}";
@@ -95,30 +102,137 @@ inactive-opacity = 0.85;
 active-opacity = 1.0;
 EOF
 
-# --- Wallpaper --------------------------------------------------------------
+# ----------[ 7. Wallpaper ]---------------------------------------------
 sudo mkdir -p /usr/share/backgrounds
-[ -f "./coding-2.png" ] && sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
-
-# --- Autostart --------------------------------------------------------------
-mkdir -p "$HOME_DIR/.dwm"
-cat > "$HOME_DIR/.dwm/autostart.sh" <<EOF
-#!/bin/bash
-xsetroot -solid black &
-EOF
-if ! $SAFE_MODE; then
-cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
-feh --no-fehbg --bg-scale /usr/share/backgrounds/wallpaper.png &
-picom --experimental-backends --config ~/.config/picom.conf &
-EOF
+if [ -f "./coding-2.png" ]; then
+  sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
+  echo "🖼️ Wallpaper installed."
+else
+  echo "⚠️ No wallpaper found (./coding-2.png missing)"
 fi
-cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
-~/.config/slstatus/slstatus &
-(sleep 2 && alacritty &) &
-EOF
-chmod +x "$HOME_DIR/.dwm/autostart.sh"
+# ----------[ 8. Helper Scripts – ~/.local/bin ]--------------------------
+mkdir -p "$HOME_DIR/.local/bin"
 
-# --- DWM local builds -------------------------------------------------------
-echo "🔧 Building DWM, DMENU, SLSTATUS locally..."
+# ---[ 8.1 Control Center (Super+M) ]------------------------------------
+cat > "$HOME_DIR/.local/bin/dwm-control.sh" <<'EOF'
+#!/bin/bash
+choice=$(printf "Update system\nRestart DWM\nBackup configs\nReboot system\nPower off\nExit X session" | dmenu -i -p "Control Center:")
+case "$choice" in
+  "Update system")
+    notify-send "🧰 Update" "System update started…"
+    alacritty -e bash -c "sudo apt update && sudo apt upgrade -y; echo; echo '✅ Update complete'; read -n 1 -s -p 'Press any key...'"
+    notify-send "✅ Update complete"
+    ;;
+  "Restart DWM")
+    notify-send "🔁 Restarting DWM…"
+    pkill dwm
+    ;;
+  "Backup configs")
+    OUT=~/dwm-backup-$(date +%F-%H%M).tar.gz
+    tar -czf "$OUT" ~/.config/dwm ~/.config/dmenu ~/.config/slstatus ~/.config/fish ~/.dwm 2>/dev/null
+    notify-send "💾 Backup complete" "$OUT"
+    ;;
+  "Reboot system")
+    notify-send "💻 Reboot" "Restarting now…"
+    sudo reboot
+    ;;
+  "Power off")
+    notify-send "🔌 Power" "Shutting down…"
+    sudo poweroff
+    ;;
+  "Exit X session")
+    notify-send "🚪 Exit" "Leaving X session…"
+    pkill X
+    ;;
+esac
+EOF
+chmod +x "$HOME_DIR/.local/bin/dwm-control.sh"
+
+# ---[ 8.2 Quick Settings (Super+N) ]------------------------------------
+cat > "$HOME_DIR/.local/bin/quick-settings.sh" <<'EOF'
+#!/bin/bash
+choice=$(printf "Volume +\nVolume -\nMute toggle\nBrightness +\nBrightness -\nNetwork info" | dmenu -i -p "Quick Settings:")
+case "$choice" in
+  "Volume +")
+    amixer set Master 5%+ >/dev/null
+    notify-send "🔊 Volume" "+5%"
+    ;;
+  "Volume -")
+    amixer set Master 5%- >/dev/null
+    notify-send "🔉 Volume" "-5%"
+    ;;
+  "Mute toggle")
+    amixer set Master toggle >/dev/null
+    M=$(amixer get Master | tail -n1 | grep -o "\[on\]\|\[off\]" | tr -d "[]")
+    notify-send "🔇 Mute" "$M"
+    ;;
+  "Brightness +")
+    brightnessctl set +5% >/dev/null
+    P=$(brightnessctl | grep -oP '\(\K[0-9]+(?=%\))')
+    notify-send "💡 Brightness" "+5% (now ${P}%)"
+    ;;
+  "Brightness -")
+    brightnessctl set 5%- >/dev/null
+    P=$(brightnessctl | grep -oP '\(\K[0-9]+(?=%\))')
+    notify-send "💡 Brightness" "-5% (now ${P}%)"
+    ;;
+  "Network info")
+    INFO=$(ip -br a | sed 's/UNKNOWN/--/g')
+    notify-send "🌐 Network" "$INFO"
+    ;;
+esac
+EOF
+chmod +x "$HOME_DIR/.local/bin/quick-settings.sh"
+
+# ---[ 8.3 Lock Screen (Super+L) – Wallpaper Blur via i3lock-color ]-----
+cat > "$HOME_DIR/.local/bin/lock-blur.sh" <<'EOF'
+#!/bin/bash
+WALL=/usr/share/backgrounds/wallpaper.png
+TMPBG=/tmp/lock_blur.png
+if [ -f "$WALL" ]; then
+  convert "$WALL" -blur 0x8 "$TMPBG"
+else
+  convert -size 1920x1080 xc:black "$TMPBG"
+fi
+i3lock-color -i "$TMPBG" --clock --insidecolor=00000066 --ringcolor=00ff99aa --timecolor=ffffffff --datecolor=ffffffff --line-uses-inside &
+sleep 1 && rm -f "$TMPBG"
+EOF
+chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
+
+# ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
+cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
+#!/bin/bash
+mkdir -p ~/Pictures/Screenshots
+FILE=~/Pictures/Screenshots/screenshot-$(date +%F-%H%M%S).png
+maim -s "$FILE"
+if [ $? -eq 0 ]; then
+  xclip -selection clipboard -t image/png -i "$FILE"
+  notify-send "📸 Screenshot saved" "$FILE (copied to clipboard)"
+else
+  notify-send "❌ Screenshot aborted"
+fi
+EOF
+chmod +x "$HOME_DIR/.local/bin/screenshot.sh"
+
+# ---[ 8.5 Maintenance Script – Clean & Log ]----------------------------
+mkdir -p "$HOME_DIR/Logs"
+cat > "$HOME_DIR/.local/bin/maintenance.sh" <<'EOF'
+#!/bin/bash
+LOG=~/Logs/maintenance-$(date +%F).log
+{
+echo "==== Maintenance $(date) ===="
+sudo apt autoremove -y && echo "✓ Orphans removed"
+sudo apt autoclean -y && echo "✓ Cache cleaned"
+sudo journalctl --vacuum-time=7d && echo "✓ Journals trimmed"
+sudo rm -rf /tmp/* && echo "✓ Temp cleared"
+echo "Done."
+} | tee -a "$LOG"
+notify-send "🧹 Maintenance complete" "Log saved to ~/Logs"
+EOF
+chmod +x "$HOME_DIR/.local/bin/maintenance.sh"
+# ----------[ 9. DWM / DMENU / SLSTATUS – Build local ]------------------
+echo "🔧 Building DWM, DMENU, SLSTATUS (local config build)..."
+
 for repo in dwm dmenu slstatus; do
   mkdir -p "$HOME_DIR/.config/$repo"
   if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
@@ -129,24 +243,63 @@ for repo in dwm dmenu slstatus; do
   cd "$HOME_DIR/.config/$repo"
   cp config.def.h config.h 2>/dev/null || true
 
+  # --- Custom Keybindings (Dennis Edition) ---
   if [ "$repo" = "dwm" ]; then
-    sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+    sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h        # Super key as MOD
     sed -i 's|"st"|"alacritty"|g' config.h
     sed -i 's|"xterm"|"alacritty"|g' config.h
+
+    # Super + Return → Alacritty
+    if ! grep -q 'XK_Return' config.h; then
+      echo '    { MODKEY, XK_Return, spawn, SHCMD("alacritty") },' >> config.h
+    fi
+    # Super + T → Thunar
     if ! grep -q 'XK_t' config.h; then
       sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
     fi
-    if ! grep -q 'XK_Return' config.h; then
-      echo '    { MODKEY, XK_Return, spawn, SHCMD("alacritty") },' >> config.h
+    # Super + M → Control Center
+    if ! grep -q 'XK_m' config.h; then
+      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_m, spawn, SHCMD("dwm-control.sh") },' config.h
+    fi
+    # Super + N → Quick Settings
+    if ! grep -q 'XK_n' config.h; then
+      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_n, spawn, SHCMD("quick-settings.sh") },' config.h
+    fi
+    # Super + L → Lock
+    if ! grep -q 'XK_l' config.h; then
+      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_l, spawn, SHCMD("lock-blur.sh") },' config.h
+    fi
+    # Super + S → Screenshot
+    if ! grep -q 'XK_s' config.h; then
+      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_s, spawn, SHCMD("screenshot.sh") },' config.h
     fi
   fi
 
   make clean all
   chmod +x "$HOME_DIR/.config/$repo/$repo"
 done
-echo "✅ DWM, DMENU, SLSTATUS built locally."
 
-# --- .xinitrc ---------------------------------------------------------------
+echo "✅ DWM, DMENU, SLSTATUS built & installed locally."
+
+# ----------[ 10. Autostart Script – ~/.dwm/autostart.sh ]---------------
+mkdir -p "$HOME_DIR/.dwm"
+cat > "$HOME_DIR/.dwm/autostart.sh" <<EOF
+#!/bin/bash
+xsetroot -solid black &
+(sleep 2 && feh --no-fehbg --bg-scale /usr/share/backgrounds/wallpaper.png) &
+EOF
+if ! \$SAFE_MODE; then
+cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
+picom --experimental-backends --config ~/.config/picom.conf &
+EOF
+fi
+cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
+~/.config/slstatus/slstatus &
+(sleep 2 && alacritty &) &
+EOF
+chmod +x "$HOME_DIR/.dwm/autostart.sh"
+
+# ----------[ 11. .xinitrc – startx config ]------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
 xmodmap ~/.Xmodmap &
@@ -154,25 +307,15 @@ xmodmap ~/.Xmodmap &
 exec $HOME/.config/dwm/dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
-
-# --- GPU packages -----------------------------------------------------------
-echo
-echo "🎮 GPU Setup: 1=NVIDIA  2=AMD  3=Skip"
-read -p "Select GPU option (1/2/3): " gpu_choice
-case "$gpu_choice" in
-  1) sudo apt install -y linux-headers-$(uname -r) nvidia-driver nvidia-settings ;;
-  2) sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools ;;
-  *) echo "Skipping GPU installation." ;;
-esac
-
-# --- Fish setup -------------------------------------------------------------
-echo "🐟 Setting Fish shell as default..."
+# ----------[ 12. Fish Shell – Nerd Setup ]------------------------------
+echo "🐟 Setting up Fish Shell..."
 sudo chsh -s /usr/bin/fish "$REAL_USER"
-
 mkdir -p "$HOME_DIR/.config/fish"
+
 cat > "$HOME_DIR/.config/fish/config.fish" <<'EOF'
 # =============================================================
-# 🐟 Fish Nerd Setup (auto user detection, auto DWM start)
+# 🐟 Fish Nerd Setup – by $USER
+#  auto-loaded every time Alacritty or TTY opens
 # =============================================================
 
 set user (whoami)
@@ -191,83 +334,92 @@ set system_days (math "($now_epoch - $install_epoch) / 86400")
 
 set_color cyan
 echo "───────────────────────────────────────────────"
-echo "🐧 Welcome back, $user@$host!"
-echo "💻 DWM + Alacritty | Fish Shell"
-echo "🕒 Uptime (current session): $uptime_now"
+echo "🐧 Welcome back, $user@$host"
+echo "💻 Debian 13 | DWM + Alacritty | Fish Shell"
+echo "🕒 Uptime (session): $uptime_now"
 echo "📅 Installed: $install_date"
-echo "⏳ System age: (approx.) $system_days days"
+echo "⏳ System age: ≈ $system_days days"
 echo "🧠 RAM usage: $ram_used / $ram_total MB"
 echo "───────────────────────────────────────────────"
 set_color normal
 
-if type -q fastfetch
-    fastfetch --logo none --structure OS:Host:Kernel:Shell:WM:Uptime:Memory
-else
-    echo "(Tip: install fastfetch for extended system info)"
-end
-
+# --- Aliases ---
 alias ll="ls -lh --color=auto"
 alias la="ls -lah --color=auto"
 alias ..="cd .."
 alias ...="cd ../.."
-alias gs="git status"
-alias gc="git commit -m"
-alias gp="git push"
-alias gl="git pull"
 alias update="sudo apt update && sudo apt upgrade -y"
 alias fetch="fastfetch"
 alias reboot="sudo reboot"
 alias poweroff="sudo poweroff"
 alias dwmconf="cd ~/.config/dwm && alacritty -e nano config.h"
 alias dwmrebuild="cd ~/.config/dwm && make clean all"
-alias dmenurebuild="cd ~/.config/dmenu && make clean all"
-alias slstatusrebuild="cd ~/.config/slstatus && make clean all"
 
-# --- Auto-start DWM on TTY1 if not running X ---
+# --- Show hint ---
+set_color green
+echo "✨  Type 'update' to update or 'fetch' for system info."
+set_color normal
+
+# --- Auto-start DWM if on TTY1 ---
 if test -z "$DISPLAY"
     and test (tty) = "/dev/tty1"
     echo "🎨 Starting DWM..."
     exec startx
 end
-
-set_color green
-echo "✨ Type 'update' to update your system or 'fetch' for system info."
-set_color normal
 EOF
 
-# --- GTK Dark ---------------------------------------------------------------
-mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
-cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
-[Settings]
-gtk-theme-name=Adwaita-dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-font-name=JetBrainsMono Nerd Font 10
-gtk-application-prefer-dark-theme=1
-EOF
-cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
+# ensure ownership
+sudo chown -R "$REAL_USER":"$REAL_USER" "$HOME_DIR/.config/fish"
 
-# --- Xmodmap ---------------------------------------------------------------
-cat > "$HOME_DIR/.Xmodmap" <<'EOF'
-clear mod4
-keycode 133 = Super_L
-add mod4 = Super_L
+# ----------[ 13. Permissions & PATH Fixes ]------------------------------
+echo "🔧 Fixing PATH and permissions..."
+echo 'export PATH="$HOME/.local/bin:$PATH"' | sudo tee -a "$HOME_DIR/.profile" >/dev/null
+chmod -R +x "$HOME_DIR/.local/bin"
+sudo chown -R "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local"
+
+# ----------[ 14. Final Notification Test ]------------------------------
+notify-send "✅ DWM Nerd OS Deluxe v9.1" "Installation almost complete"
+echo "✅ Fish + DWM autostart integrated successfully."
+# ----------[ 15. Final System Check ]----------------------------------
+echo "🧪 Running post-install checks..."
+
+check_ok() { command -v "$1" >/dev/null 2>&1 && echo "✅ $1 found" || echo "❌ $1 missing"; }
+
+for cmd in dwm dmenu slstatus alacritty fish feh picom notify-send i3lock-color maim; do
+  check_ok "$cmd"
+done
+
+# ----------[ 16. Nerd Completion Banner ]------------------------------
+clear
+cat <<'EOF'
+───────────────────────────────────────────────
+🚀  DWM Nerd OS Deluxe v9.1 Installation Complete
+───────────────────────────────────────────────
+🐧 Core:
+   - DWM + dmenu + slstatus (local builds)
+   - Fish shell (auto startx on TTY1)
+   - Alacritty (transparent, JetBrainsMono Nerd Font)
+   - Picom compositor (blur & vsync)
+🧩 Extras:
+   - Control Center (Super + M)
+   - Quick Settings (Super + N)
+   - Screenshot Tool (Super + S)
+   - Lock Screen (Super + L)
+   - Maintenance Script (~/Logs/)
+🎨 Style:
+   - Wallpaper from /usr/share/backgrounds/wallpaper.png
+   - NerdBar+ Status Modules (CPU | RAM | NET | optional GPU)
+───────────────────────────────────────────────
+✨  Tip:
+   - Reboot now, log in as user, and watch Fish start DWM automatically.
+   - Inside DWM, try your Super keys and enjoy the nerd flow.
+───────────────────────────────────────────────
 EOF
 
-# --- Final check ------------------------------------------------------------
-echo
-echo "🔍 Final check..."
-[ -x "$HOME_DIR/.config/dwm/dwm" ] && echo "✅ DWM ok" || echo "❌ DWM missing"
-[ -x "$HOME_DIR/.config/dmenu/dmenu" ] && echo "✅ DMENU ok" || echo "❌ DMENU missing"
-[ -x "$HOME_DIR/.config/slstatus/slstatus" ] && echo "✅ SLSTATUS ok" || echo "❌ SLSTATUS missing"
-command -v alacritty >/dev/null && echo "✅ Alacritty ok"
-command -v fish >/dev/null && echo "✅ Fish ok"
-echo
-echo "🎉 Installation complete!"
-echo "🐟 Fish Shell active (auto DWM start enabled)"
-echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
-echo "💻 Super+Return → Alacritty"
-echo "🗂️  Super+T → Thunar"
-echo "🌈 Adwaita-Dark + Papirus-Dark"
-echo
-echo "Reboot now:"
-echo "  sudo reboot"
+# ----------[ 17. Reboot Prompt ]---------------------------------------
+read -rp "🔁 Reboot now? (y/N): " ans
+if [[ "$ans" =~ ^[Yy]$ ]]; then
+  sudo reboot
+else
+  echo "👌 You can reboot later manually with: sudo reboot"
+fi
