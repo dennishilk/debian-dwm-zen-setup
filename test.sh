@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Dark GRUB + Nerd Fonts)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Nerd Fonts + ZSH)
 # by Dennis Hilk
 # =============================================================
 
@@ -29,7 +29,7 @@ fi
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
                     build-essential git curl wget zram-tools alacritty unzip \
-                    plymouth-themes grub2-common
+                    plymouth-themes grub2-common zsh
 
 # Enable ZRAM
 sudo systemctl enable --now zramswap.service
@@ -38,7 +38,7 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
 
-### --- Nerd Fonts fix --------------------------------------------------------
+### --- Nerd Fonts ------------------------------------------------------------
 echo "🔤 Installing JetBrainsMono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
@@ -158,6 +158,35 @@ case "$gpu_choice" in
     ;;
 esac
 
+### --- ZSH + Oh My Zsh + Powerlevel10k --------------------------------------
+echo "💀 Installing ZSH + Oh-My-Zsh + Powerlevel10k..."
+sudo apt install -y git zsh zsh-syntax-highlighting zsh-autosuggestions
+sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+sudo -u "$REAL_USER" git clone --depth=1 https://github.com/romkatv/powerlevel10k.git $HOME_DIR/.oh-my-zsh/custom/themes/powerlevel10k
+
+cat > "$HOME_DIR/.zshrc" <<'EOF'
+export ZSH="$HOME/.oh-my-zsh"
+ZSH_THEME="powerlevel10k/powerlevel10k"
+plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
+source $ZSH/oh-my-zsh.sh
+[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+EOF
+
+cat > "$HOME_DIR/.p10k.zsh" <<'EOF'
+# Minimal clean Powerlevel10k prompt
+typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
+typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=()
+typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
+typeset -g POWERLEVEL9K_MODE=nerdfont-complete
+typeset -g POWERLEVEL9K_COLOR_SCHEME='dark'
+typeset -g POWERLEVEL9K_DIR_FOREGROUND=7
+typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=2
+typeset -g POWERLEVEL9K_VCS_FOREGROUND=10
+EOF
+
+sudo chsh -s /usr/bin/zsh "$REAL_USER"
+echo "✅ ZSH with Powerlevel10k (minimal clean) installed."
+
 ### --- GRUB Dark Config ------------------------------------------------------
 echo "🧠 Applying custom dark GRUB configuration..."
 sudo bash -c "cat > /etc/default/grub <<'EOF'
@@ -173,7 +202,6 @@ GRUB_GFXPAYLOAD_LINUX=keep
 GRUB_COLOR_NORMAL='light-green/black'
 GRUB_COLOR_HIGHLIGHT='black/light-green'
 EOF"
-
 sudo update-grub
 
 ### --- Plymouth --------------------------------------------------------------
@@ -184,10 +212,9 @@ sudo update-initramfs -u
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 
 echo
-echo "✅ Minimal Dark DWM setup complete!"
+echo "✅ Full DWM + ZSH Minimal Setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "🔤 Nerd Fonts active (JetBrainsMono Nerd Font)"
-echo "💀 GRUB uses dark terminal look (green on black)"
-echo "Reboot to enjoy your new setup:"
+echo "💀 ZSH + Powerlevel10k minimal prompt ready"
+echo "Reboot to enjoy your clean dark setup:"
 echo "  sudo reboot"
