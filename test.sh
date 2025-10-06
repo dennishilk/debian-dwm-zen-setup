@@ -184,20 +184,47 @@ esac
 EOF
 chmod +x "$HOME_DIR/.local/bin/quick-settings.sh"
 
-# ---[ 8.3 Lock Screen (Super+L) – Wallpaper Blur via i3lock-color ]-----
+# ---[ 8.3 Lock Screen (Super+L) – Smart Blur Lock ]--------------------
 cat > "$HOME_DIR/.local/bin/lock-blur.sh" <<'EOF'
 #!/bin/bash
 WALL=/usr/share/backgrounds/wallpaper.png
 TMPBG=/tmp/lock_blur.png
+
+# Blur wallpaper or use plain black background
 if [ -f "$WALL" ]; then
   convert "$WALL" -blur 0x8 "$TMPBG"
 else
   convert -size 1920x1080 xc:black "$TMPBG"
 fi
-i3lock-color -i "$TMPBG" --clock --insidecolor=00000066 --ringcolor=00ff99aa --timecolor=ffffffff --datecolor=ffffffff --line-uses-inside &
+
+# Smart fallback: prefer i3lock-color, else plain i3lock
+if command -v i3lock-color >/dev/null 2>&1; then
+  i3lock-color -i "$TMPBG" \
+    --clock \
+    --insidecolor=00000066 \
+    --ringcolor=00ff99aa \
+    --timecolor=ffffffff \
+    --datecolor=ffffffff \
+    --line-uses-inside
+else
+  i3lock -i "$TMPBG"
+fi
+
+# Clean up temp image
 sleep 1 && rm -f "$TMPBG"
 EOF
 chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
+
+# optional: try to install i3lock-color if package available
+if ! command -v i3lock-color >/dev/null 2>&1; then
+  if apt-cache show i3lock-color >/dev/null 2>&1; then
+    sudo apt install -y i3lock-color
+  else
+    echo "ℹ️  i3lock-color not in repo, falling back to normal i3lock."
+    sudo apt install -y i3lock
+  fi
+fi
+
 
 # ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
 cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
