@@ -1,12 +1,12 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Edition)
-# Auto-login to DWM via bash_profile
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Final Edition)
+# Includes: ZSH + Starship, Thunar, Alacritty, Auto-start + Keybind fix
 # =============================================================
 
 set -e
 
-# --- Detect User -------------------------------------------------------------
+# --- Detect user -------------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
     REAL_USER=$(logname)
     HOME_DIR=$(eval echo "~$REAL_USER")
@@ -24,19 +24,20 @@ else
 fi
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 
-# --- Base install ------------------------------------------------------------
+# --- Base system -------------------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
     build-essential git curl wget zram-tools alacritty unzip \
     plymouth-themes grub2-common zsh lxappearance gtk2-engines-murrine \
-    adwaita-icon-theme-full papirus-icon-theme
+    adwaita-icon-theme-full papirus-icon-theme thunar thunar-volman \
+    gvfs gvfs-backends gvfs-fuse
 
 # --- ZRAM --------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
 sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
-echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
+echo "✅ ZRAM enabled"
 
 # --- Nerd Font ---------------------------------------------------------------
 sudo mkdir -p /usr/share/fonts/truetype/nerd
@@ -70,7 +71,6 @@ mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/picom.conf" <<EOF
 backend = "${PICOM_BACKEND}";
 vsync = true;
-detect-client-opacity = true;
 corner-radius = 6;
 shadow = true;
 shadow-radius = 12;
@@ -78,7 +78,6 @@ shadow-color = "#00ff99";
 shadow-opacity = 0.35;
 blur-method = "dual_kawase";
 blur-strength = 5;
-fading = true;
 inactive-opacity = 0.85;
 active-opacity = 1.0;
 EOF
@@ -87,7 +86,7 @@ EOF
 sudo mkdir -p /usr/share/backgrounds
 [ -f "./coding-2.png" ] && sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
 
-# --- Autostart + Xinit -------------------------------------------------------
+# --- Autostart ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.dwm"
 cat > "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
 #!/bin/bash
@@ -107,14 +106,15 @@ EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
 # --- Auto-start DWM on login -------------------------------------------------
-for file in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile"; do
-    if ! grep -q 'exec startx' "$file" 2>/dev/null; then
-        echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$file"
+for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
+    if ! grep -q 'exec startx' "$f" 2>/dev/null; then
+        echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
+        echo "→ Added auto-start line to $f"
     fi
 done
-echo "✅ DWM will now start automatically on login (TTY1)."
+echo "✅ Auto-start configured (no manual startx needed)"
 
-# --- GPU choice --------------------------------------------------------------
+# --- GPU setup ---------------------------------------------------------------
 echo
 echo "🎮 GPU Setup: 1=NVIDIA  2=AMD  3=Skip"
 read -p "Select GPU option (1/2/3): " gpu_choice
@@ -160,8 +160,7 @@ EOF
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 echo "✅ ZSH + Starship installed"
 
-# --- GTK Dark Theme + Thunar -------------------------------------------------
-sudo apt install -y thunar thunar-volman gvfs gvfs-backends gvfs-fuse
+# --- GTK Dark Theme ----------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
 cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
 [Settings]
@@ -172,27 +171,39 @@ gtk-cursor-theme-name=Adwaita
 gtk-application-prefer-dark-theme=1
 EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
-echo "✅ GTK Adwaita-dark + Papirus-Dark enabled"
+echo "✅ GTK Dark Theme enabled (Adwaita-dark + Papirus-Dark)"
 
-# --- Add DWM Keybinds --------------------------------------------------------
+# --- Fix DWM keybinds --------------------------------------------------------
 if [ -d "/usr/src/dwm" ]; then
     DWM_DIR="/usr/src/dwm"
 elif [ -d "$HOME_DIR/dwm" ]; then
     DWM_DIR="$HOME_DIR/dwm"
 else
+    echo "⚠️  DWM source not found, skipping keybind patch."
     DWM_DIR=""
 fi
 
 if [ -n "$DWM_DIR" ]; then
-    sudo cp "$DWM_DIR/config.h" "$DWM_DIR/config.h.bak"
-    if ! grep -q "thunar" "$DWM_DIR/config.h"; then
-        sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' "$DWM_DIR/config.h"
-    fi
-    if grep -q "st" "$DWM_DIR/config.h"; then
-        sudo sed -i 's|"st"|"alacritty"|g' "$DWM_DIR/config.h"
-    fi
+    echo "🔧 Updating DWM keybinds..."
     cd "$DWM_DIR"
+    sudo cp config.h config.h.bak
+    if grep -q '"st"' config.h; then
+        sudo sed -i 's|"st"|"alacritty"|g' config.h
+    fi
+    if ! grep -q 'thunar' config.h; then
+        sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+    fi
+    if ! grep -q 'XK_Return' config.h; then
+        cat <<'EOF' | sudo tee -a config.h >/dev/null
+static const char *termcmd[]  = { "alacritty", NULL };
+static Key keys[] = {
+    { MODKEY, XK_Return, spawn, {.v = termcmd } },
+    { MODKEY, XK_t,      spawn, SHCMD("thunar") },
+};
+EOF
+    fi
     sudo make clean install
+    echo "✅ DWM rebuilt with working Super+Return and Super+T"
 fi
 
 # --- GRUB + Plymouth ---------------------------------------------------------
@@ -211,10 +222,15 @@ sudo update-grub
 sudo plymouth-set-default-theme spinner
 sudo update-initramfs -u
 
-# --- Finish ------------------------------------------------------------------
+# --- Final summary -----------------------------------------------------------
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 echo
-echo "✅ Debian DWM Full Dark setup complete!"
-echo "💻 Auto-start enabled: DWM launches automatically after login on TTY1"
-echo "🗂️  Thunar (Super+T)  |  💻 Terminal (Super+Return)"
-echo "Reboot now → sudo reboot"
+echo "🎉 Installation complete!"
+echo "💻 Auto-start: DWM starts automatically on login (no startx)"
+echo "💀 ZSH + Starship prompt ready"
+echo "🗂️  Super+T → Thunar (dark theme)"
+echo "💻 Super+Return → Alacritty"
+echo "🌈 GTK: Adwaita-dark + Papirus-Dark"
+echo
+echo "Reboot now to enjoy your new desktop:"
+echo "  sudo reboot"
