@@ -48,6 +48,25 @@ nvidia-smi
 AMD
 vainfo | grep Driver
 
+🖥️ Running inside Proxmox / NoVNC
+
+If you’re using Proxmox’s NoVNC console,
+you might not be able to press Shift (so Mod + Shift + Enter won’t open a terminal).
+
+To fix this automatically, the setup script detects if it’s running in a virtual environment (VM)
+and launches a terminal (stterm) automatically when DWM starts.
+
+✅ Works out of the box — no keypress needed.
+💡 On bare-metal systems, you can still open a terminal with:
+
+Alt + Shift + Enter
+or
+Super + Shift + Enter
+If you want to change this behavior, edit:
+~/.dwm/autostart.sh
+and comment out:
+stterm &
+
 
 💡 Tips
 
