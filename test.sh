@@ -1,6 +1,7 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Ultimate Edition)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix Edition)
+# Includes: self-healing DWM binary check
 # =============================================================
 set -e
 
@@ -103,14 +104,28 @@ slstatus &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
+# --- Minimal Xinit + Self-Healing Binary Check -------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
+# --- DWM Binary Self-Healing ---
+if [ ! -x /usr/local/bin/dwm ]; then
+  echo "⚠️ DWM missing! Rebuilding..."
+  if [ -d /usr/src/dwm ]; then
+    cd /usr/src/dwm && sudo make clean install
+  elif [ -d ~/dwm ]; then
+    cd ~/dwm && sudo make clean install
+  else
+    echo "❌ No DWM source found!"
+  fi
+fi
+
 xmodmap ~/.Xmodmap &
 ~/.dwm/autostart.sh &
-exec dwm
+exec dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
+# --- Auto-start DWM on login -------------------------------------------------
 for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
     if ! grep -q 'exec startx' "$f" 2>/dev/null; then
         echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
@@ -157,7 +172,7 @@ gtk-application-prefer-dark-theme=1
 EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 
-# --- Clone, fix, and build DWM ----------------------------------------------
+# --- Clone + Build DWM -------------------------------------------------------
 if [ ! -d "/usr/src/dwm" ]; then
     sudo git clone https://git.suckless.org/dwm /usr/src/dwm
 fi
@@ -169,12 +184,8 @@ if ! grep -q 'thunar' config.h; then
     sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
 fi
 sudo make clean install
-echo "✅ Custom DWM built and installed to /usr/local/bin"
-
-# --- Ensure /usr/local/bin/dwm is default ------------------------------------
-sudo rm -f /usr/bin/dwm 2>/dev/null || true
 sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
-echo "✅ Binary path fixed: /usr/bin/dwm → /usr/local/bin/dwm"
+echo "✅ Custom DWM installed and symlinked"
 
 # --- Mod4 key mapping --------------------------------------------------------
 cat > "$HOME_DIR/.Xmodmap" <<'EOF'
@@ -182,6 +193,28 @@ clear mod4
 keycode 133 = Super_L
 add mod4 = Super_L
 EOF
+
+# --- Self-healing DWM check script ------------------------------------------
+sudo tee /usr/local/bin/verify_dwm_binary.sh >/dev/null <<'EOF'
+#!/bin/bash
+# Auto-check DWM binary at each boot
+if [ ! -x /usr/local/bin/dwm ]; then
+  echo "⚠️ DWM binary missing, attempting rebuild..."
+  if [ -d /usr/src/dwm ]; then
+    cd /usr/src/dwm && make clean install
+  elif [ -d ~/dwm ]; then
+    cd ~/dwm && make clean install
+  else
+    echo "❌ DWM source not found!"
+  fi
+fi
+EOF
+sudo chmod +x /usr/local/bin/verify_dwm_binary.sh
+
+# Add to startup
+if ! grep -q verify_dwm_binary "$HOME_DIR/.bash_profile"; then
+  echo "/usr/local/bin/verify_dwm_binary.sh &" >> "$HOME_DIR/.bash_profile"
+fi
 
 # --- GRUB Dark ---------------------------------------------------------------
 sudo bash -c "cat > /etc/default/grub <<'EOF'
@@ -203,7 +236,7 @@ sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 
 # --- Self-check --------------------------------------------------------------
 echo
-echo "🔍 Running post-install checks..."
+echo "🔍 Running final checks..."
 which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary correct" || echo "❌ DWM binary incorrect"
 grep -q 'thunar' /usr/src/dwm/config.h && echo "✅ Super+T active" || echo "❌ Super+T missing"
 grep -q 'alacritty' /usr/src/dwm/config.h && echo "✅ Super+Return active" || echo "❌ Terminal missing"
@@ -212,11 +245,11 @@ command -v thunar >/dev/null && echo "✅ Thunar installed"
 command -v picom >/dev/null && echo "✅ Picom installed"
 
 echo
-echo "🎉 DONE!"
-echo "🧠 Auto-start DWM: TTY1 login → Desktop"
+echo "🎉 Installation complete!"
+echo "🧠 DWM auto-starts & self-repairs at login"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
 echo "🌈 GTK: Adwaita-dark + Papirus-Dark"
 echo
-echo "Reboot now to enjoy your setup:"
+echo "Reboot now:"
 echo "  sudo reboot"
