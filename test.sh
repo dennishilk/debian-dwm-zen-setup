@@ -1,16 +1,12 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 (Trixie) DWM Full Setup by Dennis Hilk
-# Includes:
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM
-# + Alacritty (TOML) + Picom transparency + Style Pack (Fonts, Rofi, Conky, Arc GTK)
-# + Tela GRUB Theme + Plymouth Spinner
-# Auto-detects VM and sets correct Picom backend
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark Edition)
+# by Dennis Hilk
 # =============================================================
 
 set -e
 
-### --- Detect User -----------------------------------------------------------
+### --- User detection --------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
     REAL_USER=$(logname)
     HOME_DIR=$(eval echo "~$REAL_USER")
@@ -20,64 +16,33 @@ else
 fi
 echo "👤 Detected user: $REAL_USER (home: $HOME_DIR)"
 
-### --- Detect Virtualization -------------------------------------------------
+### --- Virtualization detection ---------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
-    VM_MODE=true
     PICOM_BACKEND="xrender"
-    echo "💻 Virtual environment detected → Picom backend: xrender"
+    echo "💻 VM detected – Picom backend: xrender"
 else
-    VM_MODE=false
     PICOM_BACKEND="glx"
-    echo "🧠 Native system detected → Picom backend: glx"
+    echo "🧠 Native system – Picom backend: glx"
 fi
 
-### --- Configure repositories ------------------------------------------------
-CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
-sudo bash -c "cat > /etc/apt/sources.list <<EOF
-deb http://deb.debian.org/debian ${CODENAME} main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${CODENAME}-updates main contrib non-free non-free-firmware
-deb http://security.debian.org/debian-security ${CODENAME}-security main contrib non-free non-free-firmware
-deb http://deb.debian.org/debian ${CODENAME}-backports main contrib non-free non-free-firmware
-EOF"
-
+### --- Base install ----------------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
+sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
+                    build-essential git curl wget zram-tools alacritty \
+                    fonts-jetbrains-mono plymouth-themes grub2-common
 
-### --- Base system + ZRAM ----------------------------------------------------
-echo "=== ⚙️ Installing base tools and enabling ZRAM ==="
-sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg \
-  lsb-release apt-transport-https zram-tools
+# Enable ZRAM
 sudo systemctl enable --now zramswap.service
 sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
 
-### --- DWM + Zen Kernel ------------------------------------------------------
-echo "=== 💻 Installing DWM, Xorg and Zen Kernel ==="
-sudo apt install -y xorg dwm suckless-tools feh picom slstatus mesa-utils vulkan-tools
-sudo mkdir -p /usr/share/keyrings
-curl -fsSL https://liquorix.net/liquorix-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/liquorix-keyring.gpg
-echo "deb [signed-by=/usr/share/keyrings/liquorix-keyring.gpg] http://liquorix.net/debian sid main" | \
-  sudo tee /etc/apt/sources.list.d/liquorix.list
-sudo apt update
-sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || true
-
-### --- Wallpaper -------------------------------------------------------------
-sudo mkdir -p /usr/share/backgrounds
-if [ -f "./coding-2.png" ]; then
-  sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
-  echo "✅ Wallpaper installed."
-else
-  echo "⚠️ coding-2.png not found — please copy later to /usr/share/backgrounds/wallpaper.png"
-fi
-
-### --- Alacritty -------------------------------------------------------------
-sudo apt install -y alacritty || sudo apt install -y stterm
+### --- Alacritty config (no warnings) ---------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
 opacity = 0.8
-background_opacity = 0.8
 decorations = "none"
 dynamic_title = true
 padding = { x = 6, y = 4 }
@@ -92,12 +57,7 @@ foreground = "0xffffff"
 
 [colors.cursor]
 text = "0x0a0a0a"
-cursor = "0x00ccff"
-
-[cursor]
-blink_interval = 500
-unfocused_hollow = true
-thickness = 0.15
+cursor = "0x00ff99"
 
 [cursor.style]
 shape = "Block"
@@ -108,28 +68,32 @@ history = 10000
 multiplier = 3
 EOF
 
-### --- Picom configuration ---------------------------------------------------
+### --- Picom config ----------------------------------------------------------
 mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/picom.conf" <<EOF
 backend = "${PICOM_BACKEND}";
 vsync = true;
-detect-rounded-corners = true;
 detect-client-opacity = true;
-use-damage = true;
 corner-radius = 6;
 shadow = true;
 shadow-radius = 12;
-shadow-color = "#00ccff";
+shadow-color = "#00ff99";
 shadow-opacity = 0.35;
-opacity-rule = [ "90:class_g = 'Alacritty'" ];
-fade-in-step = 0.03;
-fade-out-step = 0.03;
 blur-method = "dual_kawase";
 blur-strength = 5;
 fading = true;
 inactive-opacity = 0.85;
 active-opacity = 1.0;
 EOF
+
+### --- Wallpaper -------------------------------------------------------------
+sudo mkdir -p /usr/share/backgrounds
+if [ -f "./coding-2.png" ]; then
+  sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
+  echo "✅ Wallpaper installed."
+else
+  echo "⚠️ coding-2.png not found — please copy later to /usr/share/backgrounds/wallpaper.png"
+fi
 
 ### --- Autostart -------------------------------------------------------------
 mkdir -p "$HOME_DIR/.dwm"
@@ -140,7 +104,6 @@ feh --no-fehbg --bg-scale /usr/share/backgrounds/wallpaper.png &
 picom --experimental-backends --config ~/.config/picom.conf &
 slstatus &
 (sleep 2 && alacritty &) &
-(sleep 5 && conky &) &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
@@ -151,85 +114,12 @@ exec dwm
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
-PROFILE="$HOME_DIR/.bash_profile"
-grep -q startx "$PROFILE" 2>/dev/null || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
-
-### --- GPU setup -------------------------------------------------------------
-echo "🎮 GPU Setup (1=NVIDIA 2=AMD 3=Skip)"
-read -p "Select: " gpu
-case "$gpu" in
-  1) sudo apt install -y linux-headers-$(uname -r) nvidia-driver nvidia-smi nvidia-settings \
-        nvidia-cuda-toolkit libnvidia-encode1 ffmpeg nv-codec-headers ;;
-  2) sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
-        libdrm-amdgpu1 mesa-utils libgl1-mesa-dri ffmpeg mesa-va-drivers vainfo ;;
-  *) echo "❎ Skipping GPU install." ;;
-esac
-
-### --- STYLE PACK ------------------------------------------------------------
-echo "=== 🎨 Installing Style Pack ==="
-sudo apt install -y fonts-firacode fonts-jetbrains-mono fonts-powerline powerline rofi \
-                    conky-all lxappearance arc-theme papirus-icon-theme \
-                    plymouth-themes git
-
-# Powerline for Bash
-if ! grep -q "powerline.sh" "$HOME_DIR/.bashrc"; then
-  echo 'if [ -f /usr/share/powerline/bindings/bash/powerline.sh ]; then
-  source /usr/share/powerline/bindings/bash/powerline.sh
-  fi' >> "$HOME_DIR/.bashrc"
+if ! grep -q startx "$HOME_DIR/.bash_profile" 2>/dev/null; then
+  echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$HOME_DIR/.bash_profile"
 fi
 
-# Rofi
-mkdir -p "$HOME_DIR/.config/rofi"
-cat > "$HOME_DIR/.config/rofi/config.rasi" <<'EOF'
-configuration {
-  modi: "drun,run";
-  font: "JetBrainsMono Nerd Font 11";
-  show-icons: true;
-  icon-theme: "Papirus-Dark";
-  theme: "Arc-Dark";
-}
-EOF
-
-# Conky
-mkdir -p "$HOME_DIR/.config/conky"
-cat > "$HOME_DIR/.config/conky/conky.conf" <<'EOF'
-conky.config = {
-    alignment = 'top_right',
-    background = true,
-    update_interval = 1,
-    double_buffer = true,
-    own_window = true,
-    own_window_type = 'dock',
-    own_window_argb_visual = true,
-    own_window_argb_value = 180,
-    draw_borders = false,
-    draw_shades = false,
-    use_xft = true,
-    font = 'JetBrainsMono Nerd Font:size=10',
-};
-conky.text = [[
-${time %H:%M:%S}
-${execi 60 uname -r}
-CPU: ${cpu}%  |  RAM: ${memperc}% 
-Disk: ${fs_used_perc /}%  |  Uptime: ${uptime_short}
-]];
-EOF
-
-# GTK Theme
-mkdir -p "$HOME_DIR/.config/gtk-3.0"
-cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
-[Settings]
-gtk-theme-name=Arc-Dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-font-name=JetBrainsMono Nerd Font 11
-EOF
-
-### --- GRUB THEME (Tela) -----------------------------------------------------
-echo "🌀 Installing Tela GRUB Theme..."
-git clone https://github.com/vinceliuice/grub2-themes.git /tmp/grub2-themes
-cd /tmp/grub2-themes
-sudo ./install.sh -t tela -b -s 1080p
-cd ~
+### --- GRUB (default dark) ---------------------------------------------------
+echo "🧠 Using default Debian GRUB theme (Starfield)"
 sudo update-grub
 
 ### --- Plymouth --------------------------------------------------------------
@@ -240,12 +130,8 @@ sudo update-initramfs -u
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 
 echo
-echo "✅ Full DWM + Style setup complete!"
-if [ "$VM_MODE" = true ]; then
-  echo "💻 VM mode → Picom uses Xrender (CPU transparency)"
-else
-  echo "🧠 Native → Picom uses GLX (GPU transparency)"
-fi
-echo "🎨 Includes Zen Kernel, Alacritty TOML, Rofi, Conky, Arc GTK, and Tela GRUB Theme."
-echo "Reboot to enjoy your new desktop:"
+echo "✅ Minimal Dark DWM setup complete!"
+echo "💻 Picom backend: ${PICOM_BACKEND}"
+echo "🎨 Default dark GRUB, no Conky, no Rofi — pure minimalism"
+echo "Reboot to enjoy:"
 echo "  sudo reboot"
