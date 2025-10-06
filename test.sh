@@ -1,34 +1,36 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v4)
-# Features:
-#  - DWM Self-Healing + Binary Auto-Rebuild
-#  - Nerd Font Mirror Fallback + Offline Support
-#  - GPU optional (NVIDIA / AMD / Skip)
-#  - ZSH + Starship + Thunar + Alacritty
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v5)
+# - Root-safe Nerd Font install (sudo everywhere)
+# - Font mirrors + offline fallback
+# - Self-healing DWM rebuild + GPU + ZSH + Starship
 # =============================================================
 set -e
 
+# --- detect user -------------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
-    REAL_USER=$(logname)
-    HOME_DIR=$(eval echo "~$REAL_USER")
+  REAL_USER=$(logname)
+  HOME_DIR=$(eval echo "~$REAL_USER")
 else
-    REAL_USER=$USER
-    HOME_DIR=$HOME
+  REAL_USER=$USER
+  HOME_DIR=$HOME
 fi
-echo "👤 User: $REAL_USER"
+echo "👤 User: $REAL_USER ($HOME_DIR)"
 
+# --- detect VM ---------------------------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
-    PICOM_BACKEND="xrender"
+  PICOM_BACKEND="xrender"
 else
-    PICOM_BACKEND="glx"
+  PICOM_BACKEND="glx"
 fi
+echo "💻 Picom backend: $PICOM_BACKEND"
 
+# --- base packages -----------------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg feh picom slstatus build-essential git curl wget unzip \
-    zram-tools plymouth-themes grub2-common zsh lxappearance \
-    gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
-    thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates
+  zram-tools plymouth-themes grub2-common zsh lxappearance \
+  gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
+  thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates
 
 # --- ZRAM --------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
@@ -37,8 +39,8 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured"
 
-# --- Nerd Font with Mirror Fallback ------------------------------------------
-echo "📦 Installing JetBrainsMono Nerd Font..."
+# --- JetBrains Mono Nerd Font (safe sudo) -----------------------------------
+echo "📦 Installing JetBrains Mono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
 
@@ -51,7 +53,8 @@ FONT_URLS=(
 success=false
 for URL in "${FONT_URLS[@]}"; do
   echo "→ Trying $URL ..."
-  if wget --timeout=30 --show-progress -q "$URL" -O JetBrainsMono.zip || curl -L --max-time 30 -o JetBrainsMono.zip "$URL"; then
+  if sudo wget --timeout=30 --show-progress -q "$URL" -O JetBrainsMono.zip || \
+     sudo curl -L --max-time 30 -o JetBrainsMono.zip "$URL"; then
       echo "✅ Downloaded from $URL"
       success=true
       break
@@ -59,21 +62,25 @@ for URL in "${FONT_URLS[@]}"; do
 done
 
 if [ "$success" = true ]; then
-    sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
-    sudo fc-cache -fv >/dev/null
-    echo "✅ JetBrainsMono Nerd Font installed successfully"
+  sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
+  sudo fc-cache -fv >/dev/null
+  echo "✅ JetBrains Mono Nerd Font installed successfully"
 elif [ -f "./JetBrainsMono.zip" ]; then
-    echo "💾 Found local JetBrainsMono.zip – installing offline..."
-    sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1
-    sudo fc-cache -fv >/dev/null
-    echo "✅ Installed from local archive"
+  echo "💾 Found local JetBrainsMono.zip – installing offline..."
+  sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1
+  sudo fc-cache -fv >/dev/null
+  echo "✅ Installed from local archive"
 else
-    echo "⚠️  All font mirrors failed. You can place JetBrainsMono.zip here manually:"
-    echo "    /usr/share/fonts/truetype/nerd/"
+  echo "⚠️ Font download failed."
+  echo "   Manual fix:"
+  echo "   sudo wget <url> -O /usr/share/fonts/truetype/nerd/JetBrainsMono.zip"
+  echo "   sudo unzip /usr/share/fonts/truetype/nerd/JetBrainsMono.zip -d /usr/share/fonts/truetype/nerd/"
+  echo "   sudo fc-cache -fv"
 fi
 cd ~
+sleep 1
 
-# --- Alacritty config --------------------------------------------------------
+# --- Alacritty ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
@@ -91,7 +98,7 @@ text = "0x0a0a0a"
 cursor = "0x00ff99"
 EOF
 
-# --- Picom config ------------------------------------------------------------
+# --- Picom -------------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/picom.conf" <<EOF
 backend = "${PICOM_BACKEND}";
@@ -123,11 +130,11 @@ slstatus &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
-# --- .xinitrc with self-repair ----------------------------------------------
+# --- Xinitrc with auto-rebuild ----------------------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
 if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚠️  DWM missing! Rebuilding..."
+  echo "⚠️  DWM missing – rebuilding..."
   sudo mkdir -p /usr/src
   if [ ! -d /usr/src/dwm ]; then
     cd /usr/src && sudo git clone https://git.suckless.org/dwm
@@ -148,7 +155,7 @@ exec dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
-# --- Auto start on login -----------------------------------------------------
+# --- Auto-start on login -----------------------------------------------------
 for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
   grep -q 'exec startx' "$f" 2>/dev/null || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
 done
@@ -188,10 +195,10 @@ gtk-application-prefer-dark-theme=1
 EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 
-# --- DWM ensure build --------------------------------------------------------
+# --- Ensure DWM build --------------------------------------------------------
 if [ ! -d "/usr/src/dwm" ]; then
-    sudo mkdir -p /usr/src && cd /usr/src
-    sudo git clone https://git.suckless.org/dwm
+  sudo mkdir -p /usr/src && cd /usr/src
+  sudo git clone https://git.suckless.org/dwm
 fi
 cd /usr/src/dwm
 sudo cp config.def.h config.h
@@ -208,7 +215,7 @@ keycode 133 = Super_L
 add mod4 = Super_L
 EOF
 
-# --- Final checks ------------------------------------------------------------
+# --- Final check -------------------------------------------------------------
 echo
 echo "🔍 Final check..."
 which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary ok" || echo "❌ DWM binary missing"
@@ -224,5 +231,5 @@ echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
 echo "🌈 Adwaita-Dark + Papirus-Dark"
 echo
-echo "Reboot:"
+echo "Reboot now:"
 echo "  sudo reboot"
