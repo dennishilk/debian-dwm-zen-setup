@@ -1,6 +1,6 @@
 #!/bin/bash
 # ======================================================================
-# 🧠 Debian 13 DWM Nerd OS Deluxe v10.2  (Dennis Hilk Edition #1)
+# 🧠 Debian 13 DWM script by Dennis Hilk | vs.1
 # ======================================================================
 set -euo pipefail
 IFS=$'\n\t'
