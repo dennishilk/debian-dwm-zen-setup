@@ -1,7 +1,8 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Auto-Terminal (Transparent)
+# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty Terminal
+# Auto-Start support for Proxmox / NoVNC
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
@@ -36,7 +37,7 @@ fi
 
 # --- 3️⃣ DWM + Desktop tools ---------------------------------------------------
 echo "=== 💻 3. Installing DWM and desktop utilities ==="
-sudo apt install -y xorg dwm suckless-tools stterm feh picom slstatus mesa-utils vulkan-tools
+sudo apt install -y xorg dwm suckless-tools feh picom slstatus mesa-utils vulkan-tools
 
 # --- 4️⃣ Zen Kernel (Liquorix signed) ----------------------------------------
 echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix, signed) ==="
@@ -61,25 +62,29 @@ else
   echo "⚠️  coding-2.png not found – please copy manually later."
 fi
 
-# --- 6️⃣ DWM Autostart (with transparency + auto-terminal) --------------------
-echo "=== ⚙️ 6. Configuring DWM autostart and Xinitrc ==="
+# --- 6️⃣ Install Alacritty ----------------------------------------------------
+echo "=== 🌈 6. Installing Alacritty (GPU-accelerated transparent terminal) ==="
+sudo apt install -y alacritty || {
+  echo "⚠️  Alacritty not found in Debian repos – falling back to stterm."
+  sudo apt install -y stterm
+}
+
+# --- 7️⃣ DWM Autostart --------------------------------------------------------
+echo "=== ⚙️ 7. Configuring DWM autostart and Xinitrc ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
 #!/bin/bash
 feh --bg-scale /usr/share/backgrounds/wallpaper.png &
 picom --experimental-backends &
 slstatus &
-# --- Automatic terminal with transparency ---
-stterm -A 0.8 &
-EOF
 
-# Auto-terminal only if virtualized (Proxmox)
-if systemd-detect-virt -q; then
-  echo "💻 Detected virtual environment – keeping auto-terminal enabled."
+# --- Auto-start transparent terminal (Alacritty fallback to stterm) ---
+if command -v alacritty >/dev/null 2>&1; then
+  (sleep 2 && alacritty &) &
 else
-  # On bare metal, comment it out
-  sed -i 's/^stterm/# stterm/' ~/.dwm/autostart.sh
+  (sleep 2 && stterm &) &
 fi
+EOF
 
 chmod +x ~/.dwm/autostart.sh
 
@@ -90,12 +95,12 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# --- 7️⃣ Auto-login -----------------------------------------------------------
-echo "=== 🔧 7. Enabling auto-login to DWM on tty1 ==="
+# --- 8️⃣ Auto-login -----------------------------------------------------------
+echo "=== 🔧 8. Enabling auto-login to DWM on tty1 ==="
 PROFILE=/home/$USER/.bash_profile
 grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
 
-# --- 8️⃣ GPU Setup ------------------------------------------------------------
+# --- 9️⃣ GPU Setup ------------------------------------------------------------
 echo
 echo "🎮 GPU Setup Assistant"
 echo "------------------------"
@@ -126,10 +131,10 @@ case "$gpu_choice" in
     ;;
 esac
 
-# --- 9️⃣ Done -----------------------------------------------------------------
+# --- 🔟 Done -----------------------------------------------------------------
 echo
 echo "✅ Installation complete!"
-echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM."
-echo "If running inside Proxmox, a transparent terminal opens automatically at login."
+echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty."
+echo "Transparent terminal auto-starts (2s delay)."
 echo "Reboot now to apply changes:"
 echo "  sudo reboot"
