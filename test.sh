@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.5)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.8)
 #  - Local builds in ~/.config/{dwm,dmenu,slstatus}
-#  - Non-interactive ZSH + Starship
-#  - Safe-Mode-Support for VMs (xrender + xterm)
+#  - Fish Shell + Starship + Nerd Banner
+#  - Safe Mode for VMs
 # =============================================================
 set -e
 
@@ -35,9 +35,9 @@ fi
 # --- Base packages ----------------------------------------------------------
 sudo apt update -y
 sudo apt install -y xorg feh picom build-essential git curl wget unzip \
-  libx11-dev libxft-dev libxinerama-dev zram-tools zsh lxappearance \
+  libx11-dev libxft-dev libxinerama-dev zram-tools fish lxappearance \
   gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
-  thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates
+  thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates fastfetch
 
 # --- ZRAM -------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
@@ -73,8 +73,9 @@ foreground = "0xcccccc"
 [colors.cursor]
 text = "0x0a0a0a"
 cursor = "0x00ff99"
+
 [shell]
-program = "/usr/bin/zsh"
+program = "/usr/bin/fish"
 args = ["--login"]
 EOF
 
@@ -155,7 +156,7 @@ EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
 # --- Auto start on login ----------------------------------------------------
-for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
+for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile"; do
   grep -q 'exec startx' "$f" 2>/dev/null || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
 done
 
@@ -169,25 +170,74 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- ZSH + Starship (safe non-interactive) ----------------------------------
-echo "🐚 Installing ZSH + Starship (safe non-interactive)..."
-sudo apt install -y zsh git curl
-ZSH_DIR="$HOME_DIR/.oh-my-zsh"
-if [ ! -d "$ZSH_DIR" ]; then
-  git clone https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR"
-  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_DIR/custom/plugins/zsh-syntax-highlighting"
-  git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_DIR/custom/plugins/zsh-autosuggestions"
-fi
-if ! command -v starship >/dev/null; then
-  curl -fsSL https://starship.rs/install.sh | bash -s -- -y >/dev/null 2>&1
-fi
-cat > "$HOME_DIR/.zshrc" <<'EOF'
-export ZSH="$HOME/.oh-my-zsh"
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
-source $ZSH/oh-my-zsh.sh
-eval "$(starship init zsh)"
+# --- Starship prompt --------------------------------------------------------
+echo "🚀 Installing Starship prompt..."
+curl -fsSL https://starship.rs/install.sh | bash -s -- -y >/dev/null 2>&1
+mkdir -p "$HOME_DIR/.config/fish"
+chsh -s /usr/bin/fish "$REAL_USER"
+
+# --- Nerd Banner (Fish config) ---------------------------------------------
+cat > "$HOME_DIR/.config/fish/config.fish" <<'EOF'
+# =============================================================
+# 🐟 Fish Nerd Setup (auto user detection)
+# =============================================================
+
+if type -q starship
+    starship init fish | source
+end
+
+set user (whoami)
+set hostname (hostname)
+set uptime_now (uptime -p | sed 's/up //')
+set ram_total (free -m | awk '/Mem:/ {print $2}')
+set ram_used (free -m | awk '/Mem:/ {print $3}')
+set root_dev (findmnt -no SOURCE /)
+set install_date (sudo tune2fs -l $root_dev ^/dev/null | grep "Filesystem created:" | sed 's/Filesystem created: //')
+if test -z "$install_date"
+    set install_date (ls -lt --time=ctime /etc | tail -n 1 | awk '{print $6, $7, $8}')
+end
+set install_epoch (date -d "$install_date" +%s ^/dev/null)
+set now_epoch (date +%s)
+set system_days (math "($now_epoch - $install_epoch) / 86400")
+
+set_color cyan
+echo "───────────────────────────────────────────────"
+echo "🐧 Welcome back, $user@$hostname!"
+echo "💻 DWM + Alacritty | (Fish + Starship)"
+echo "🕒 Uptime (current session): $uptime_now"
+echo "📅 Installed: $install_date"
+echo "⏳ System age: (approx.) $system_days days"
+echo "🧠 RAM usage: $ram_used / $ram_total MB"
+echo "───────────────────────────────────────────────"
+set_color normal
+
+if type -q fastfetch
+    fastfetch --logo none --structure OS:Host:Kernel:Shell:DE:WM:Uptime:Memory
+else
+    echo "(Tip: install fastfetch for extended system info)"
+end
+
+alias ll="ls -lh --color=auto"
+alias la="ls -lah --color=auto"
+alias ..="cd .."
+alias ...="cd ../.."
+alias gs="git status"
+alias gc="git commit -m"
+alias gp="git push"
+alias gl="git pull"
+alias update="sudo apt update && sudo apt upgrade -y"
+alias fetch="fastfetch"
+alias reboot="sudo reboot"
+alias poweroff="sudo poweroff"
+alias dwmconf="cd ~/.config/dwm && alacritty -e nano config.h"
+alias dwmrebuild="cd ~/.config/dwm && make clean all"
+alias dmenurebuild="cd ~/.config/dmenu && make clean all"
+alias slstatusrebuild="cd ~/.config/slstatus && make clean all"
+
+set_color green
+echo "✨ Type 'update' to update your system or 'fetch' for system info."
+set_color normal
 EOF
-echo "✅ ZSH + Starship configured (shell switch deferred)."
 
 # --- GTK Dark ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
@@ -214,18 +264,11 @@ echo "🔍 Final check..."
 [ -x "$HOME_DIR/.config/dmenu/dmenu" ] && echo "✅ DMENU ok" || echo "❌ DMENU missing"
 [ -x "$HOME_DIR/.config/slstatus/slstatus" ] && echo "✅ SLSTATUS ok" || echo "❌ SLSTATUS missing"
 command -v alacritty >/dev/null && echo "✅ Alacritty ok"
-command -v zsh >/dev/null && echo "✅ ZSH ok"
+command -v fish >/dev/null && echo "✅ Fish ok"
 command -v starship >/dev/null && echo "✅ Starship ok"
-
-# --- Set ZSH as default shell silently --------------------------------------
-(
-  sleep 1
-  sudo chsh -s /usr/bin/zsh "$REAL_USER" >/dev/null 2>&1
-  echo "✅ Default shell changed to ZSH for $REAL_USER"
-) &
-
 echo
 echo "🎉 Installation complete!"
+echo "🐟 Fish + Starship active"
 echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
