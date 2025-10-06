@@ -1,12 +1,12 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark Edition)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU Selection)
 # by Dennis Hilk
 # =============================================================
 
 set -e
 
-### --- User detection --------------------------------------------------------
+### --- Detect User -----------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
     REAL_USER=$(logname)
     HOME_DIR=$(eval echo "~$REAL_USER")
@@ -16,7 +16,7 @@ else
 fi
 echo "👤 Detected user: $REAL_USER (home: $HOME_DIR)"
 
-### --- Virtualization detection ---------------------------------------------
+### --- Detect VM -------------------------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
     PICOM_BACKEND="xrender"
     echo "💻 VM detected – Picom backend: xrender"
@@ -38,7 +38,7 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
 
-### --- Alacritty config (no warnings) ---------------------------------------
+### --- Alacritty config ------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
@@ -118,6 +118,33 @@ if ! grep -q startx "$HOME_DIR/.bash_profile" 2>/dev/null; then
   echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$HOME_DIR/.bash_profile"
 fi
 
+### --- GPU setup -------------------------------------------------------------
+echo
+echo "🎮 GPU Setup"
+echo "1 = NVIDIA"
+echo "2 = AMD"
+echo "3 = Skip"
+read -p "Select GPU option (1/2/3): " gpu_choice
+
+case "$gpu_choice" in
+  1)
+    echo "🔧 Installing NVIDIA drivers..."
+    sudo apt install -y linux-headers-$(uname -r) nvidia-driver nvidia-smi \
+      nvidia-settings nvidia-cuda-toolkit libnvidia-encode1 ffmpeg nv-codec-headers
+    ;;
+  2)
+    echo "🔧 Installing AMD drivers..."
+    sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
+      libdrm-amdgpu1 mesa-utils libgl1-mesa-dri ffmpeg mesa-va-drivers vainfo
+    ;;
+  3)
+    echo "❎ Skipping GPU installation."
+    ;;
+  *)
+    echo "⚠️ Invalid input — skipping GPU installation."
+    ;;
+esac
+
 ### --- GRUB (default dark) ---------------------------------------------------
 echo "🧠 Using default Debian GRUB theme (Starfield)"
 sudo update-grub
@@ -132,6 +159,7 @@ sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 echo
 echo "✅ Minimal Dark DWM setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
+echo "🎮 GPU driver setup finished"
 echo "🎨 Default dark GRUB, no Conky, no Rofi — pure minimalism"
 echo "Reboot to enjoy:"
 echo "  sudo reboot"
