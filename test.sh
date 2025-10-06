@@ -1,8 +1,8 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty Terminal
-# Auto-Start support for Proxmox / NoVNC
+# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty + Picom transparency
+# Auto-terminal for Proxmox / NoVNC
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
@@ -65,27 +65,62 @@ fi
 # --- 6️⃣ Install Alacritty ----------------------------------------------------
 echo "=== 🌈 6. Installing Alacritty (GPU-accelerated transparent terminal) ==="
 sudo apt install -y alacritty || {
-  echo "⚠️  Alacritty not found in Debian repos – falling back to stterm."
+  echo "⚠️  Alacritty not found – falling back to stterm."
   sudo apt install -y stterm
 }
 
-# --- 7️⃣ DWM Autostart --------------------------------------------------------
-echo "=== ⚙️ 7. Configuring DWM autostart and Xinitrc ==="
+# --- 7️⃣ Configure Alacritty + Picom for transparency -------------------------
+echo "=== 🎨 7. Creating Alacritty and Picom configs (80% opacity) ==="
+
+mkdir -p ~/.config/alacritty
+cat > ~/.config/alacritty/alacritty.yml <<'EOF'
+window:
+  opacity: 0.8
+  decorations: none
+  dynamic_title: true
+font:
+  normal:
+    family: monospace
+    style: Regular
+  size: 11.0
+colors:
+  primary:
+    background: '0x000000'
+    foreground: '0xffffff'
+  cursor:
+    text: '0x000000'
+    cursor: '0xffffff'
+scrolling:
+  history: 10000
+EOF
+
+mkdir -p ~/.config
+cat > ~/.config/picom.conf <<'EOF'
+backend = "glx";
+vsync = true;
+detect-rounded-corners = true;
+detect-client-opacity = true;
+detect-transient = true;
+use-damage = true;
+corner-radius = 6;
+round-borders = 1;
+opacity-rule = [
+  "90:class_g = 'Alacritty'",
+];
+fade-in-step = 0.03;
+fade-out-step = 0.03;
+EOF
+
+# --- 8️⃣ DWM Autostart --------------------------------------------------------
+echo "=== ⚙️ 8. Configuring DWM autostart and Xinitrc ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
 #!/bin/bash
 feh --bg-scale /usr/share/backgrounds/wallpaper.png &
-picom --experimental-backends &
+picom --experimental-backends --config ~/.config/picom.conf &
 slstatus &
-
-# --- Auto-start transparent terminal (Alacritty fallback to stterm) ---
-if command -v alacritty >/dev/null 2>&1; then
-  (sleep 2 && alacritty &) &
-else
-  (sleep 2 && stterm &) &
-fi
+(sleep 2 && alacritty &) &
 EOF
-
 chmod +x ~/.dwm/autostart.sh
 
 cat > ~/.xinitrc <<'EOF'
@@ -95,12 +130,12 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# --- 8️⃣ Auto-login -----------------------------------------------------------
-echo "=== 🔧 8. Enabling auto-login to DWM on tty1 ==="
+# --- 9️⃣ Auto-login -----------------------------------------------------------
+echo "=== 🔧 9. Enabling auto-login to DWM on tty1 ==="
 PROFILE=/home/$USER/.bash_profile
 grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
 
-# --- 9️⃣ GPU Setup ------------------------------------------------------------
+# --- 🔟 GPU Setup ------------------------------------------------------------
 echo
 echo "🎮 GPU Setup Assistant"
 echo "------------------------"
@@ -131,10 +166,9 @@ case "$gpu_choice" in
     ;;
 esac
 
-# --- 🔟 Done -----------------------------------------------------------------
+# --- ✅ Done -----------------------------------------------------------------
 echo
 echo "✅ Installation complete!"
-echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty."
-echo "Transparent terminal auto-starts (2s delay)."
+echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty transparency."
 echo "Reboot now to apply changes:"
 echo "  sudo reboot"
