@@ -2,14 +2,15 @@
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
 # DWM + Zen Kernel + Wallpaper + GPU (NVIDIA/AMD/None)
+# Compatible with minimal Proxmox installations
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
 
 set -e
 
-# --- Repos ----------------------------------------------------
-echo "=== 🧩 1. Debian-Repositories aktivieren ==="
+# --- 1️⃣ Debian Repositories aktivieren ----------------------------------------
+echo "=== 🧩 1. Configure Debian repositories ==="
 CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
 sudo bash -c "cat > /etc/apt/sources.list <<EOF
 deb http://deb.debian.org/debian ${CODENAME} main contrib non-free non-free-firmware
@@ -20,37 +21,44 @@ EOF"
 
 sudo apt update && sudo apt full-upgrade -y
 
-# --- Basis ----------------------------------------------------
-echo "=== ⚙️ 2. Basiswerkzeuge installieren ==="
-sudo apt install -y build-essential git curl wget nano unzip software-properties-common
+# --- 2️⃣ Basiswerkzeuge --------------------------------------------------------
+echo "=== ⚙️ 2. Installing base tools ==="
+sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg lsb-release apt-transport-https
 
-# --- DWM + Tools ----------------------------------------------
-echo "=== 💻 3. Xorg + DWM + Tools installieren ==="
+# --- 3️⃣ DWM + Desktop Tools ---------------------------------------------------
+echo "=== 💻 3. Installing DWM and desktop utilities ==="
 sudo apt install -y xorg dwm suckless-tools stterm feh picom slstatus mesa-utils vulkan-tools
 
-# --- Zen Kernel -----------------------------------------------
-echo "=== ⚙️ 4. Zen-Kernel (Liquorix) installieren ==="
-if ! apt-cache search linux-image-liquorix-amd64 | grep -q liquorix; then
-  echo "→ Liquorix-Repository hinzufügen ..."
+# --- 4️⃣ Zen Kernel (Liquorix) ------------------------------------------------
+echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix) ==="
+
+# Prüfen, ob add-apt-repository existiert
+if command -v add-apt-repository >/dev/null 2>&1; then
+  echo "→ add-apt-repository detected, using PPA method"
   sudo add-apt-repository -y ppa:damentz/liquorix || true
-  sudo apt update
+else
+  echo "→ add-apt-repository not found, adding Liquorix repository manually"
+  echo "deb http://liquorix.net/debian sid main" | sudo tee /etc/apt/sources.list.d/liquorix.list
+  curl -fsSL https://liquorix.net/liquorix-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/liquorix.gpg
 fi
+
+sudo apt update
 sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || {
-  echo "⚠️  Liquorix-Kernel nicht verfügbar – Standardkernel bleibt aktiv."
+  echo "⚠️  Liquorix kernel not available – keeping default kernel."
 }
 
-# --- Wallpaper ------------------------------------------------
-echo "=== 🖼️ 5. Wallpaper einrichten ==="
+# --- 5️⃣ Wallpaper ------------------------------------------------------------
+echo "=== 🖼️ 5. Setting up wallpaper ==="
 if [ -f "./coding-2.png" ]; then
   sudo mkdir -p /usr/share/backgrounds
   sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
-  echo "✅ Wallpaper installiert unter /usr/share/backgrounds/wallpaper.png"
+  echo "✅ Wallpaper installed: /usr/share/backgrounds/wallpaper.png"
 else
-  echo "⚠️  Kein coding-2.png im Skriptordner gefunden – bitte manuell kopieren."
+  echo "⚠️  coding-2.png not found – please copy it manually later."
 fi
 
-# --- Autostart + Xinitrc -------------------------------------
-echo "=== ⚙️ 6. DWM Autostart und Xinitrc konfigurieren ==="
+# --- 6️⃣ Autostart + Xinitrc --------------------------------------------------
+echo "=== ⚙️ 6. Configuring DWM autostart and Xinitrc ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
 #!/bin/bash
@@ -67,50 +75,49 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# --- Auto-Login ----------------------------------------------
-echo "=== 🔧 7. Auto-Login in DWM (tty1) ==="
+# --- 7️⃣ Auto-Login -----------------------------------------------------------
+echo "=== 🔧 7. Enabling auto-login to DWM on tty1 ==="
 PROFILE=/home/$USER/.bash_profile
 grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
 
-# --- GPU Auswahl ---------------------------------------------
+# --- 8️⃣ GPU Auswahl ----------------------------------------------------------
 echo
-echo "🎮 GPU-Setup-Assistent"
-echo "-------------------------"
-echo "Welche GPU-Treiber möchtest du installieren?"
-echo "  [1] NVIDIA (z. B. RTX 3060 Ti)"
-echo "  [2] AMD (z. B. RX 6600 / 6700 / 7900)"
-echo "  [3] Keine – überspringen"
-read -p "Deine Auswahl (1/2/3): " gpu_choice
+echo "🎮 GPU Setup Assistant"
+echo "------------------------"
+echo "Choose your GPU driver:"
+echo "  [1] NVIDIA (RTX / GTX)"
+echo "  [2] AMD (Radeon / RX / Vega)"
+echo "  [3] None – skip GPU setup"
+read -p "Select (1/2/3): " gpu_choice
 
 case "$gpu_choice" in
   1)
-    echo "=== 🧩 NVIDIA-Treiber werden installiert ==="
+    echo "=== 🧩 Installing NVIDIA drivers ==="
     sudo apt install -y linux-headers-$(uname -r) \
       nvidia-driver nvidia-smi nvidia-settings nvidia-cuda-toolkit libnvidia-encode1
-    echo "=== 🎬 NVENC-Unterstützung ==="
+    echo "=== 🎬 Installing NVENC support ==="
     sudo apt install -y ffmpeg nv-codec-headers || true
-    echo "🔍 Test mit: nvidia-smi"
+    echo "🔍 Test with: nvidia-smi"
     ;;
-
   2)
-    echo "=== 🧩 AMD-Treiber werden installiert ==="
+    echo "=== 🧩 Installing AMD drivers ==="
     sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
       libdrm-amdgpu1 mesa-utils libgl1-mesa-dri
-    echo "=== 🎬 VAAPI-Unterstützung ==="
+    echo "=== 🎬 Installing VAAPI support ==="
     sudo apt install -y ffmpeg mesa-va-drivers vainfo || true
-    echo "🔍 Test mit: vainfo | grep Driver"
+    echo "🔍 Test with: vainfo | grep Driver"
     ;;
-
   3)
-    echo "❎ GPU-Installation übersprungen."
+    echo "❎ GPU setup skipped."
     ;;
   *)
-    echo "⚠️ Ungültige Auswahl – übersprungen."
+    echo "⚠️ Invalid choice – skipping GPU setup."
     ;;
 esac
 
-# --- Abschluss ------------------------------------------------
+# --- 9️⃣ Abschluss ------------------------------------------------------------
 echo
-echo "✅ Installation abgeschlossen!"
-echo "System läuft mit DWM, Zen-Kernel und konfiguriertem Wallpaper."
-echo "Starte dein System neu mit:  sudo reboot"
+echo "✅ Installation complete!"
+echo "Your Debian system is now running with DWM, Zen Kernel, and optional GPU support."
+echo "Reboot now to apply changes:"
+echo "  sudo reboot"
