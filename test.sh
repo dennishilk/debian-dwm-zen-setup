@@ -184,59 +184,34 @@ esac
 EOF
 chmod +x "$HOME_DIR/.local/bin/quick-settings.sh"
 
-# ---[ 8.3 Lock Screen (Super+L) – Build i3lock-color from GitHub ]------
-echo "🔐 Installing i3lock-color from GitHub..."
-sudo apt install -y \
-  autoconf automake pkg-config libev-dev libxcb-composite0-dev \
-  libxcb-xinerama0-dev libxcb-xkb-dev libxkbcommon-x11-dev libjpeg-dev \
-  libpam0g-dev libcairo2-dev libxcb-util0-dev libxcb-image0-dev \
-  libxcb-randr0-dev libxcb-xrm-dev libxcb-shape0-dev libxcb-icccm4-dev \
-  libxcb-keysyms1-dev
-
-if [ ! -d "/tmp/i3lock-color" ]; then
-  git clone https://github.com/Raymo111/i3lock-color.git /tmp/i3lock-color
-else
-  git -C /tmp/i3lock-color pull
-fi
-cd /tmp/i3lock-color
-./build.sh
-sudo make install
-cd -
+# ---[ 8.3 Lock Screen (Super+L) – Blur Wallpaper with i3lock ]----------
+echo "🔐 Installing standard i3lock (Debian default)..."
+sudo apt install -y i3lock imagemagick
 
 cat > "$HOME_DIR/.local/bin/lock-blur.sh" <<'EOF'
 #!/bin/bash
+# Simple lock screen using i3lock and blurred wallpaper
+
 WALL=/usr/share/backgrounds/wallpaper.png
 TMPBG=/tmp/lock_blur.png
 
-# Blur wallpaper or fallback to solid
+# Blur wallpaper or fallback to plain black
 if [ -f "$WALL" ]; then
   convert "$WALL" -blur 0x8 "$TMPBG"
 else
   convert -size 1920x1080 xc:black "$TMPBG"
 fi
 
-# Run i3lock-color with nerdy glow
-i3lock-color -i "$TMPBG" \
-  --clock \
-  --radius=120 \
-  --ringvercolor=00ff99ff \
-  --ringwrongcolor=ff0066ff \
-  --ringcolor=00ff99aa \
-  --insidecolor=00000066 \
-  --keyhlcolor=00ff99ff \
-  --bshlcolor=ff0066ff \
-  --line-uses-inside \
-  --timecolor=ffffffff \
-  --datecolor=ffffffff \
-  --timesize=48 \
-  --datesize=24 \
-  --indicator \
-  --nofork
+# Lock the screen
+i3lock -i "$TMPBG"
 
-rm -f "$TMPBG"
+# Clean up
+sleep 1 && rm -f "$TMPBG"
 EOF
+
 chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
 sudo chown "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local/bin/lock-blur.sh"
+
 
 # ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
 cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
