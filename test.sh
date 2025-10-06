@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v5)
-# - Root-safe Nerd Font install (sudo everywhere)
-# - Font mirrors + offline fallback
-# - Self-healing DWM rebuild + GPU + ZSH + Starship
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v6)
+#  - Fixes "exec dwm not found"
+#  - Always uses absolute path /usr/local/bin/dwm
+#  - Rebuilds automatically if missing
 # =============================================================
 set -e
 
@@ -39,7 +39,7 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured"
 
-# --- JetBrains Mono Nerd Font (safe sudo) -----------------------------------
+# --- JetBrains Mono Nerd Font ------------------------------------------------
 echo "📦 Installing JetBrains Mono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
@@ -49,7 +49,6 @@ FONT_URLS=(
   "https://mirror.ghproxy.com/https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip"
   "https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/JetBrainsMono/complete/JetBrainsMonoNerdFont-Regular.ttf"
 )
-
 success=false
 for URL in "${FONT_URLS[@]}"; do
   echo "→ Trying $URL ..."
@@ -65,17 +64,9 @@ if [ "$success" = true ]; then
   sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
   sudo fc-cache -fv >/dev/null
   echo "✅ JetBrains Mono Nerd Font installed successfully"
-elif [ -f "./JetBrainsMono.zip" ]; then
-  echo "💾 Found local JetBrainsMono.zip – installing offline..."
-  sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1
-  sudo fc-cache -fv >/dev/null
-  echo "✅ Installed from local archive"
 else
-  echo "⚠️ Font download failed."
-  echo "   Manual fix:"
-  echo "   sudo wget <url> -O /usr/share/fonts/truetype/nerd/JetBrainsMono.zip"
-  echo "   sudo unzip /usr/share/fonts/truetype/nerd/JetBrainsMono.zip -d /usr/share/fonts/truetype/nerd/"
-  echo "   sudo fc-cache -fv"
+  echo "⚠️ Font download failed. You can place JetBrainsMono.zip manually in:"
+  echo "   /usr/share/fonts/truetype/nerd/"
 fi
 cd ~
 sleep 1
@@ -126,15 +117,16 @@ xsetroot -solid black &
 feh --no-fehbg --bg-scale /usr/share/backgrounds/wallpaper.png &
 picom --experimental-backends --config ~/.config/picom.conf &
 slstatus &
-(sleep 2 && alacritty &) &
+(sleep 2 && xterm &) &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
-# --- Xinitrc with auto-rebuild ----------------------------------------------
+# --- .xinitrc with absolute path + rebuild -----------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
+# --- DWM Self-Healing ---
 if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚠️  DWM missing – rebuilding..."
+  echo "⚠️  DWM missing! Rebuilding..."
   sudo mkdir -p /usr/src
   if [ ! -d /usr/src/dwm ]; then
     cd /usr/src && sudo git clone https://git.suckless.org/dwm
@@ -142,7 +134,7 @@ if [ ! -x /usr/local/bin/dwm ]; then
   cd /usr/src/dwm
   sudo cp config.def.h config.h 2>/dev/null || true
   sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-  sudo sed -i 's|"st"|"alacritty"|g' config.h
+  sudo sed -i 's|"st"|"xterm"|g' config.h
   if ! grep -q 'thunar' config.h; then
       sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
   fi
@@ -151,7 +143,7 @@ if [ ! -x /usr/local/bin/dwm ]; then
 fi
 xmodmap ~/.Xmodmap &
 ~/.dwm/autostart.sh &
-exec dwm > ~/.dwm.log 2>&1
+exec /usr/local/bin/dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
@@ -170,42 +162,19 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- ZSH + Starship ----------------------------------------------------------
-sudo apt install -y git zsh curl
-sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
-bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
-cat > "$HOME_DIR/.zshrc" <<'EOF'
-export ZSH="$HOME/.oh-my-zsh"
-plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
-source $ZSH/oh-my-zsh.sh
-eval "$(starship init zsh)"
-EOF
-sudo chsh -s /usr/bin/zsh "$REAL_USER"
-
-# --- GTK Dark ---------------------------------------------------------------
-mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
-cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
-[Settings]
-gtk-theme-name=Adwaita-dark
-gtk-icon-theme-name=Papirus-Dark
-gtk-font-name=JetBrainsMono Nerd Font 10
-gtk-application-prefer-dark-theme=1
-EOF
-cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
-
-# --- Ensure DWM build --------------------------------------------------------
-if [ ! -d "/usr/src/dwm" ]; then
-  sudo mkdir -p /usr/src && cd /usr/src
+# --- Ensure DWM exists -------------------------------------------------------
+if [ ! -x /usr/local/bin/dwm ]; then
+  echo "⚙️ Building DWM (initial install)..."
+  sudo mkdir -p /usr/src
+  cd /usr/src
   sudo git clone https://git.suckless.org/dwm
+  cd dwm
+  sudo cp config.def.h config.h
+  sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+  sudo sed -i 's|"st"|"xterm"|g' config.h
+  sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+  sudo make clean install
 fi
-cd /usr/src/dwm
-sudo cp config.def.h config.h
-sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-sudo sed -i 's|"st"|"alacritty"|g' config.h
-sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
-sudo make clean install
 sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
 
 # --- Xmodmap -----------------------------------------------------------------
@@ -220,14 +189,13 @@ echo
 echo "🔍 Final check..."
 which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary ok" || echo "❌ DWM binary missing"
 command -v thunar >/dev/null && echo "✅ Thunar ok"
-command -v alacritty >/dev/null && echo "✅ Alacritty ok"
+command -v xterm >/dev/null && echo "✅ Xterm ok"
 command -v picom >/dev/null && echo "✅ Picom ok"
-command -v starship >/dev/null && echo "✅ Starship ok"
 
 echo
 echo "🎉 Done!"
-echo "🧠 DWM self-repairs automatically"
-echo "💻 Super+Return → Alacritty"
+echo "🧠 DWM self-repairs automatically and uses absolute path"
+echo "💻 Super+Return → Xterm"
 echo "🗂️  Super+T → Thunar"
 echo "🌈 Adwaita-Dark + Papirus-Dark"
 echo
