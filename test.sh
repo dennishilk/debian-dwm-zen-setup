@@ -3,7 +3,7 @@
 # 🧠 Debian 13 (Trixie) Universal Setup
 # DWM + Zen Kernel + GPU (NVIDIA/AMD/None)
 # + ZRAM + Alacritty (TOML neon blue) + Picom transparency
-# Auto-detects user (root or normal) and installs configs correctly
+# Auto-detects VM (Proxmox/QEMU) and switches to xrender backend
 # Author: Dennis Hilk • License: MIT
 # =============================================================
 
@@ -18,6 +18,17 @@ else
     HOME_DIR=$HOME
 fi
 echo "👤 Detected user: $REAL_USER (home: $HOME_DIR)"
+
+# --- Detect virtualization (Proxmox/QEMU/KVM/VMWare/VirtualBox) -------------
+if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
+    VM_MODE=true
+    PICOM_BACKEND="xrender"
+    echo "💻 Virtual environment detected → using Picom backend: xrender"
+else
+    VM_MODE=false
+    PICOM_BACKEND="glx"
+    echo "🧠 Native system detected → using Picom backend: glx"
+fi
 
 # --- 1️⃣ Debian repositories ---------------------------------------------------
 echo "=== 🧩 1. Configure Debian repositories ==="
@@ -108,8 +119,8 @@ multiplier = 3
 EOF
 
 mkdir -p "$HOME_DIR/.config"
-cat > "$HOME_DIR/.config/picom.conf" <<'EOF'
-backend = "glx";
+cat > "$HOME_DIR/.config/picom.conf" <<EOF
+backend = "${PICOM_BACKEND}";
 vsync = true;
 detect-rounded-corners = true;
 detect-client-opacity = true;
@@ -179,6 +190,10 @@ sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR/.config" "$HOME_DIR/.dwm" "$HOM
 
 echo
 echo "✅ Setup complete!"
-echo "DWM + Zen Kernel + ZRAM + Alacritty (TOML neon blue) + Picom transparency ready."
-echo "Reboot to enjoy your new desktop:"
+if [ "$VM_MODE" = true ]; then
+    echo "💻 VM mode detected – Picom uses XRENDER (CPU transparency)."
+else
+    echo "🧠 Native mode – Picom uses GLX (GPU transparency)."
+fi
+echo "Reboot to enjoy your DWM desktop:"
 echo " sudo reboot"
