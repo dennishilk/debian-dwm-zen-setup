@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Dark GRUB)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Dark GRUB + Nerd Fonts)
 # by Dennis Hilk
 # =============================================================
 
@@ -28,8 +28,8 @@ fi
 ### --- Base install ----------------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
-                    build-essential git curl wget zram-tools alacritty \
-                    fonts-jetbrains-mono plymouth-themes grub2-common
+                    build-essential git curl wget zram-tools alacritty unzip \
+                    plymouth-themes grub2-common
 
 # Enable ZRAM
 sudo systemctl enable --now zramswap.service
@@ -37,6 +37,16 @@ sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
+
+### --- Nerd Fonts fix --------------------------------------------------------
+echo "🔤 Installing JetBrainsMono Nerd Font..."
+sudo mkdir -p /usr/share/fonts/truetype/nerd
+cd /usr/share/fonts/truetype/nerd
+sudo wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip
+sudo unzip -o JetBrainsMono.zip >/dev/null
+sudo fc-cache -fv >/dev/null
+cd ~
+echo "✅ Nerd Font installed successfully!"
 
 ### --- Alacritty config ------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
@@ -49,6 +59,9 @@ padding = { x = 6, y = 4 }
 
 [font]
 normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
+bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
+italic = { family = "JetBrainsMono Nerd Font", style = "Italic" }
+bold_italic = { family = "JetBrainsMono Nerd Font", style = "Bold Italic" }
 size = 11.0
 
 [colors.primary]
@@ -174,6 +187,7 @@ echo
 echo "✅ Minimal Dark DWM setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "💀 GRUB now uses dark terminal look (green on black)"
-echo "Reboot to enjoy:"
+echo "🔤 Nerd Fonts active (JetBrainsMono Nerd Font)"
+echo "💀 GRUB uses dark terminal look (green on black)"
+echo "Reboot to enjoy your new setup:"
 echo "  sudo reboot"
