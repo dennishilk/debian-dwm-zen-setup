@@ -17,7 +17,8 @@ IN WORK <->
 
 - 🧱 **Fully automated setup** – just run one script  
 - 💻 **DWM desktop** with autostart, transparency (Picom), and wallpaper  
-- ⚙️ **Zen Kernel (Liquorix)** for better desktop and gaming performance  
+- ⚙️ **Zen Kernel (Liquorix)** for better desktop and gaming performance
+- 🧠 **ZRAM integration** for better memory efficiency    
 - 🎮 **Optional GPU installation**
   - NVIDIA (CUDA + NVENC)
   - AMD (VAAPI + Vulkan)
