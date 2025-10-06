@@ -1,9 +1,13 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.1)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.3)
+#  - Local user build (~/.config/dwm, ~/.config/dmenu, ~/.config/slstatus)
+#  - No root needed for rebuilds
+#  - Alacritty + ZSH + Starship + Safe-Mode
 # =============================================================
 set -e
 
+# --- user detection ---------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
   REAL_USER=$(logname)
   HOME_DIR=$(eval echo "~$REAL_USER")
@@ -13,7 +17,7 @@ else
 fi
 echo "👤 User: $REAL_USER ($HOME_DIR)"
 
-# --- Detect VM/GPU ----------------------------------------------------------
+# --- GPU detection ----------------------------------------------------------
 SAFE_MODE=false
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
   PICOM_BACKEND="xrender"
@@ -23,14 +27,14 @@ else
   if ! lspci | grep -qiE 'vga|3d|nvidia|amd|intel'; then SAFE_MODE=true; fi
 fi
 if $SAFE_MODE; then
-  echo "🧩 Safe Mode: no GPU detected → using xterm & no picom"
+  echo "🧩 Safe Mode: using xterm & no picom"
 else
-  echo "💻 GPU detected → normal mode with Alacritty & Picom"
+  echo "💻 GPU detected → Alacritty & Picom enabled"
 fi
 
-# --- Base packages ----------------------------------------------------------
+# --- Base system packages ---------------------------------------------------
 sudo apt update -y
-sudo apt install -y xorg feh picom slstatus build-essential git curl wget unzip \
+sudo apt install -y xorg feh picom build-essential git curl wget unzip \
   libx11-dev libxft-dev libxinerama-dev zram-tools zsh lxappearance \
   gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
   thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates
@@ -69,6 +73,10 @@ foreground = "0xcccccc"
 [colors.cursor]
 text = "0x0a0a0a"
 cursor = "0x00ff99"
+
+[shell]
+program = "/usr/bin/zsh"
+args = ["--login"]
 EOF
 
 # --- Picom ------------------------------------------------------------------
@@ -104,33 +112,46 @@ picom --experimental-backends --config ~/.config/picom.conf &
 EOF
 fi
 cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
-slstatus &
+~/.config/slstatus/slstatus &
 (sleep 2 && alacritty &) &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
+# --- DWM local build --------------------------------------------------------
+echo "🔧 Building DWM, DMENU, SLSTATUS in ~/.config ..."
+for repo in dwm dmenu slstatus; do
+  mkdir -p "$HOME_DIR/.config/$repo"
+  if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
+    git clone https://git.suckless.org/$repo "$HOME_DIR/.config/$repo"
+  else
+    git -C "$HOME_DIR/.config/$repo" pull
+  fi
+  cd "$HOME_DIR/.config/$repo"
+  cp config.def.h config.h 2>/dev/null || true
+
+  if [ "$repo" = "dwm" ]; then
+    sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+    sed -i 's|"st"|"alacritty"|g' config.h
+    sed -i 's|"xterm"|"alacritty"|g' config.h
+    if ! grep -q 'XK_t' config.h; then
+      sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+    fi
+    if ! grep -q 'XK_Return' config.h; then
+      echo '    { MODKEY, XK_Return, spawn, SHCMD("alacritty") },' >> config.h
+    fi
+  fi
+
+  make clean all
+  chmod +x "$HOME_DIR/.config/$repo/$repo"
+done
+echo "✅ DWM, DMENU, SLSTATUS built locally."
+
 # --- .xinitrc ---------------------------------------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
-if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚙️ Rebuilding DWM..."
-  sudo mkdir -p /usr/src
-  if [ ! -d /usr/src/dwm ]; then
-    cd /usr/src && sudo git clone https://git.suckless.org/dwm
-  fi
-  cd /usr/src/dwm
-  sudo cp config.def.h config.h 2>/dev/null || true
-  sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-  sudo sed -i 's|"st"|"alacritty"|g' config.h
-  if ! grep -q 'thunar' config.h; then
-    sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
-  fi
-  sudo make clean install
-  sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
-fi
 xmodmap ~/.Xmodmap &
 ~/.dwm/autostart.sh &
-exec /usr/local/bin/dwm > ~/.dwm.log 2>&1
+exec $HOME/.config/dwm/dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
@@ -149,22 +170,8 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- Build DWM --------------------------------------------------------------
-if [ ! -x /usr/local/bin/dwm ]; then
-  sudo mkdir -p /usr/src && cd /usr/src
-  sudo git clone https://git.suckless.org/dwm
-  cd dwm
-  sudo cp config.def.h config.h
-  sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-  sudo sed -i 's|"st"|"alacritty"|g' config.h
-  sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
-  sudo make clean install
-fi
-sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
-
-# --- ZSH + Oh My Zsh + Starship + Alacritty Shell Fix -----------------------
-echo "🐚 Installing ZSH + Starship (Alacritty default shell)..."
-
+# --- ZSH + Starship ---------------------------------------------------------
+echo "🐚 Installing ZSH + Starship..."
 sudo apt install -y zsh git curl
 if [ ! -d "$HOME_DIR/.oh-my-zsh" ]; then
   sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
@@ -174,7 +181,6 @@ fi
 if ! command -v starship >/dev/null; then
   bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
 fi
-
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
@@ -182,17 +188,6 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
-
-# Force Alacritty to launch ZSH
-mkdir -p "$HOME_DIR/.config/alacritty"
-if ! grep -q 'shell]' "$HOME_DIR/.config/alacritty/alacritty.toml" 2>/dev/null; then
-  cat >> "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
-
-[shell]
-program = "/usr/bin/zsh"
-args = ["--login"]
-EOF
-fi
 echo "✅ Alacritty now launches ZSH with Starship prompt."
 
 # --- GTK Dark ---------------------------------------------------------------
@@ -216,15 +211,15 @@ EOF
 # --- Final check ------------------------------------------------------------
 echo
 echo "🔍 Final check..."
-which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary ok" || echo "❌ DWM binary missing"
+[ -x "$HOME_DIR/.config/dwm/dwm" ] && echo "✅ DWM ok" || echo "❌ DWM missing"
+[ -x "$HOME_DIR/.config/dmenu/dmenu" ] && echo "✅ DMENU ok" || echo "❌ DMENU missing"
+[ -x "$HOME_DIR/.config/slstatus/slstatus" ] && echo "✅ SLSTATUS ok" || echo "❌ SLSTATUS missing"
 command -v alacritty >/dev/null && echo "✅ Alacritty ok"
-command -v thunar >/dev/null && echo "✅ Thunar ok"
-command -v picom >/dev/null && echo "✅ Picom ok"
 command -v zsh >/dev/null && echo "✅ ZSH ok"
 command -v starship >/dev/null && echo "✅ Starship ok"
 echo
 echo "🎉 Installation complete!"
-echo "🧠 DWM repairs itself on login"
+echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
 echo "🌈 Adwaita-Dark + Papirus-Dark"
