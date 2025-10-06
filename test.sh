@@ -184,32 +184,33 @@ esac
 EOF
 chmod +x "$HOME_DIR/.local/bin/quick-settings.sh"
 
-# ---[ 8.3 Lock Screen (Super+L) – Blur Wallpaper with i3lock ]----------
-echo "🔐 Installing standard i3lock (Debian default)..."
-sudo apt install -y i3lock imagemagick
+# ---[ 8.3 “Lock” Screen Ersatz (Super+L) – simple dark fade ]-----------
+echo "🌙 Adding dark-fade screen toggle (no lock packages)..."
+sudo apt install -y imagemagick xrandr
 
-cat > "$HOME_DIR/.local/bin/lock-blur.sh" <<'EOF'
+cat > "$HOME_DIR/.local/bin/screen-fade.sh" <<'EOF'
 #!/bin/bash
-# Simple lock screen using i3lock and blurred wallpaper
+# Creates a temporary dark overlay using the current wallpaper.
 
 WALL=/usr/share/backgrounds/wallpaper.png
-TMPBG=/tmp/lock_blur.png
+TMPBG=/tmp/fade_screen.png
 
-# Blur wallpaper or fallback to plain black
 if [ -f "$WALL" ]; then
-  convert "$WALL" -blur 0x8 "$TMPBG"
+  convert "$WALL" -fill black -colorize 60% "$TMPBG"
 else
   convert -size 1920x1080 xc:black "$TMPBG"
 fi
 
-# Lock the screen
-i3lock -i "$TMPBG"
-
-# Clean up temp image
-sleep 1 && rm -f "$TMPBG"
+# Show overlay as fullscreen background window using feh
+feh --fullscreen --no-fehbg "$TMPBG" &
+PID=$!
+notify-send "🌌 Screen darkened" "Press any key or click to return."
+read -n 1 -s
+kill $PID 2>/dev/null
+rm -f "$TMPBG"
 EOF
-chmod +x "$HOME_DIR/.local/bin/lock-blur.sh"
-sudo chown "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local/bin/lock-blur.sh"
+chmod +x "$HOME_DIR/.local/bin/screen-fade.sh"
+sudo chown "$REAL_USER":"$REAL_USER" "$HOME_DIR/.local/bin/screen-fade.sh"
 
 # ---[ 8.4 Screenshot Tool (Super+S) ]----------------------------------
 cat > "$HOME_DIR/.local/bin/screenshot.sh" <<'EOF'
