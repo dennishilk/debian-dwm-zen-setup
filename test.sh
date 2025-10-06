@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH + Starship)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + ZSH + Starship)
 # by Dennis Hilk
 # =============================================================
 
@@ -152,16 +152,17 @@ esac
 echo "💀 Installing ZSH + Oh-My-Zsh + Starship..."
 sudo apt install -y git zsh curl
 
-# Install Oh My Zsh headless
+# Install Oh My Zsh (headless)
 sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
 # Install ZSH plugins manually
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 
-# Install Starship
-sudo curl -fsSL https://starship.rs/install.sh | sudo bash -s -- -y
-mkdir -p "$HOME_DIR/.config"
+# Install Starship safely (no POSIX warning)
+echo "🚀 Installing Starship prompt (POSIX-safe mode)..."
+bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
+echo "✅ Starship installed successfully."
 
 # Configure ZSH to use Starship
 cat > "$HOME_DIR/.zshrc" <<'EOF'
@@ -172,7 +173,8 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 
-# Configure Starship (dark minimal)
+# Configure Starship (dark minimal theme)
+mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/starship.toml" <<'EOF'
 add_newline = false
 format = """$directory$git_branch$git_status$character"""
@@ -189,7 +191,7 @@ style = "dimmed white"
 truncation_length = 3
 EOF
 
-# Set default shell
+# --- Set default shell -------------------------------------------------------
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 echo "✅ Installed ZSH + Oh-My-Zsh + Starship (minimal dark)."
@@ -216,9 +218,9 @@ sudo update-initramfs -u
 
 # --- Final message ----------------------------------------------------------
 echo
-echo "✅ Final Debian DWM + ZSH + Starship setup complete!"
+echo "✅ Final Debian DWM + Starship setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "🚀 Starship active with dark minimal theme"
-echo "Reboot to enjoy your new clean setup:"
+echo "🚀 Starship prompt active (dark minimal)"
+echo "Reboot to enjoy your new system:"
 echo "  sudo reboot"
