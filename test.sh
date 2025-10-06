@@ -207,24 +207,46 @@ notify-send "🧹 Maintenance complete" "Log saved to ~/Logs"
 EOF
 chmod +x "$HOME_DIR/.local/bin/maintenance.sh"
 
-# ----------[ 10. Build suckless stack ]--------------------------------
+# ----------[ 10. Build suckless stack – safe version ]-----------------
 for repo in dwm dmenu slstatus; do
   mkdir -p "$HOME_DIR/.config/$repo"
-  git clone https://git.suckless.org/$repo "$HOME_DIR/.config/$repo"
-  cd "$HOME_DIR/.config/$repo"
-  cp config.def.h config.h 2>/dev/null || true
-  if [ "$repo" = "dwm" ]; then
-    sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-    sed -i 's|"st"|"alacritty"|g' config.h
-    grep -q XK_Return config.h || echo '{ MODKEY, XK_Return, spawn, SHCMD("alacritty") },' >> config.h
-    echo '{ MODKEY, XK_t, spawn, SHCMD("thunar") },' >> config.h
-    echo '{ MODKEY, XK_m, spawn, SHCMD("dwm-control.sh") },' >> config.h
-    echo '{ MODKEY, XK_n, spawn, SHCMD("quick-settings.sh") },' >> config.h
-    echo '{ MODKEY, XK_l, spawn, SHCMD("screen-fade.sh") },' >> config.h
-    echo '{ MODKEY, XK_s, spawn, SHCMD("screenshot.sh") },' >> config.h
+  if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
+    git clone https://git.suckless.org/$repo "$HOME_DIR/.config/$repo"
   fi
-  make clean all
+  cd "$HOME_DIR/.config/$repo"
+  cp -f config.def.h config.h 2>/dev/null || true
+
+  if [ "$repo" = "dwm" ]; then
+    echo "⚙️  Patching DWM keybinds safely..."
+    sed -i 's|#define MODKEY.*|#define MODKEY Mod4Mask|' config.h
+    sed -i 's|"st"|"alacritty"|g' config.h
+
+    # Stelle sicher, dass die Einträge innerhalb der keys[]-Liste landen
+    START_LINE=$(grep -n "static Key keys" config.h | cut -d: -f1)
+    END_LINE=$(grep -n "^};" config.h | grep -A1 "$START_LINE" | tail -n1 | cut -d: -f1)
+
+    # Nur wenn Bereich existiert
+    if [ -n "$START_LINE" ] && [ -n "$END_LINE" ]; then
+      TMP_FILE=$(mktemp)
+      head -n $((END_LINE - 1)) config.h > "$TMP_FILE"
+
+      cat <<'KEYS' >> "$TMP_FILE"
+    { MODKEY, XK_Return, spawn, SHCMD("alacritty") },
+    { MODKEY, XK_t,      spawn, SHCMD("thunar") },
+    { MODKEY, XK_m,      spawn, SHCMD("dwm-control.sh") },
+    { MODKEY, XK_n,      spawn, SHCMD("quick-settings.sh") },
+    { MODKEY, XK_l,      spawn, SHCMD("screen-fade.sh") },
+    { MODKEY, XK_s,      spawn, SHCMD("screenshot.sh") },
+KEYS
+
+      tail -n +"$END_LINE" config.h >> "$TMP_FILE"
+      mv "$TMP_FILE" config.h
+    fi
+  fi
+
+  make clean all || { echo "❌ Build failed for $repo"; exit 1; }
 done
+
 
 # ----------[ 11. Autostart ]-------------------------------------------
 mkdir -p "$HOME_DIR/.dwm"
