@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.9)
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.9.2)
 #  - Local builds in ~/.config/{dwm,dmenu,slstatus}
 #  - Fish Shell (no Starship)
-#  - Safe Mode for VMs
+#  - Auto DWM start from Fish (no manual startx)
 # =============================================================
 set -e
 
@@ -155,11 +155,6 @@ exec $HOME/.config/dwm/dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
-# --- Auto start on login ----------------------------------------------------
-for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile"; do
-  grep -q 'exec startx' "$f" 2>/dev/null || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
-done
-
 # --- GPU packages -----------------------------------------------------------
 echo
 echo "🎮 GPU Setup: 1=NVIDIA  2=AMD  3=Skip"
@@ -172,16 +167,16 @@ esac
 
 # --- Fish setup -------------------------------------------------------------
 echo "🐟 Setting Fish shell as default..."
-chsh -s /usr/bin/fish "$REAL_USER"
+sudo chsh -s /usr/bin/fish "$REAL_USER"
 
 mkdir -p "$HOME_DIR/.config/fish"
 cat > "$HOME_DIR/.config/fish/config.fish" <<'EOF'
 # =============================================================
-# 🐟 Fish Nerd Setup (auto user detection, no Starship)
+# 🐟 Fish Nerd Setup (auto user detection, auto DWM start)
 # =============================================================
 
 set user (whoami)
-set hostname (hostname)
+set host (hostname)
 set uptime_now (uptime -p | sed 's/up //')
 set ram_total (free -m | awk '/Mem:/ {print $2}')
 set ram_used (free -m | awk '/Mem:/ {print $3}')
@@ -196,7 +191,7 @@ set system_days (math "($now_epoch - $install_epoch) / 86400")
 
 set_color cyan
 echo "───────────────────────────────────────────────"
-echo "🐧 Welcome back, $user@$hostname!"
+echo "🐧 Welcome back, $user@$host!"
 echo "💻 DWM + Alacritty | Fish Shell"
 echo "🕒 Uptime (current session): $uptime_now"
 echo "📅 Installed: $install_date"
@@ -227,6 +222,13 @@ alias dwmconf="cd ~/.config/dwm && alacritty -e nano config.h"
 alias dwmrebuild="cd ~/.config/dwm && make clean all"
 alias dmenurebuild="cd ~/.config/dmenu && make clean all"
 alias slstatusrebuild="cd ~/.config/slstatus && make clean all"
+
+# --- Auto-start DWM on TTY1 if not running X ---
+if test -z "$DISPLAY"
+    and test (tty) = "/dev/tty1"
+    echo "🎨 Starting DWM..."
+    exec startx
+end
 
 set_color green
 echo "✨ Type 'update' to update your system or 'fetch' for system info."
@@ -261,7 +263,7 @@ command -v alacritty >/dev/null && echo "✅ Alacritty ok"
 command -v fish >/dev/null && echo "✅ Fish ok"
 echo
 echo "🎉 Installation complete!"
-echo "🐟 Fish Shell active"
+echo "🐟 Fish Shell active (auto DWM start enabled)"
 echo "🧠 Local builds: ~/.config/{dwm,dmenu,slstatus}"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
