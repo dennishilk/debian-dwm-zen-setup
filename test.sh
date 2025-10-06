@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH + Soft Colors)
 # by Dennis Hilk
 # =============================================================
 
@@ -48,7 +48,7 @@ sudo fc-cache -fv >/dev/null
 cd ~
 echo "✅ Nerd Font installed successfully!"
 
-### --- Alacritty config ------------------------------------------------------
+### --- Alacritty config (soft colors) ----------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
@@ -66,7 +66,27 @@ size = 11.0
 
 [colors.primary]
 background = "0x0a0a0a"
-foreground = "0xffffff"
+foreground = "0xcccccc"
+
+[colors.normal]
+black   = "0x0a0a0a"
+red     = "0xaa4444"
+green   = "0x88aa88"
+yellow  = "0xaaaa66"
+blue    = "0x6688aa"
+magenta = "0x996699"
+cyan    = "0x66aaaa"
+white   = "0xcccccc"
+
+[colors.bright]
+black   = "0x333333"
+red     = "0xcc6666"
+green   = "0x99cc99"
+yellow  = "0xcccc88"
+blue    = "0x88aacc"
+magenta = "0xbb88bb"
+cyan    = "0x88cccc"
+white   = "0xffffff"
 
 [colors.cursor]
 text = "0x0a0a0a"
@@ -181,24 +201,33 @@ source $ZSH/oh-my-zsh.sh
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 EOF
 
-# Minimal Powerlevel10k config
+# Minimal Powerlevel10k config (soft colors)
 cat > "$HOME_DIR/.p10k.zsh" <<'EOF'
-# Minimal clean Powerlevel10k prompt
+# Minimal clean Powerlevel10k prompt (soft colors)
 typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
 typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=()
 typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
 typeset -g POWERLEVEL9K_MODE=nerdfont-complete
 typeset -g POWERLEVEL9K_COLOR_SCHEME='dark'
-typeset -g POWERLEVEL9K_DIR_FOREGROUND=7
-typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=2
-typeset -g POWERLEVEL9K_VCS_FOREGROUND=10
+typeset -g POWERLEVEL9K_DIR_FOREGROUND=248
+typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=244
+typeset -g POWERLEVEL9K_VCS_FOREGROUND=108
+EOF
+
+# Adjust syntax highlighting colors
+cat > "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/highlighters/main/main-highlighter.zsh" <<'EOF'
+ZSH_HIGHLIGHT_STYLES[command]="fg=244"
+ZSH_HIGHLIGHT_STYLES[alias]="fg=245"
+ZSH_HIGHLIGHT_STYLES[builtin]="fg=244"
+ZSH_HIGHLIGHT_STYLES[function]="fg=245"
+ZSH_HIGHLIGHT_STYLES[path]="fg=242"
 EOF
 
 # Set default shell
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 
-echo "✅ Installed ZSH + Oh-My-Zsh + Powerlevel10k (minimal) with syntax + autosuggestions."
+echo "✅ Installed ZSH + Oh-My-Zsh + Powerlevel10k (minimal soft colors)."
 
 ### --- GRUB Dark Config ------------------------------------------------------
 echo "🧠 Applying custom dark GRUB configuration..."
@@ -228,8 +257,7 @@ echo
 echo "✅ Final Debian DWM Dark setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "💀 ZSH + Powerlevel10k (minimal clean prompt)"
-echo "🔤 Nerd Fonts fully installed"
-echo "💀 GRUB uses green-on-black dark mode"
-echo "Reboot to enjoy your new setup:"
+echo "💀 ZSH + Powerlevel10k (minimal clean, soft colors)"
+echo "🎨 Subtle green-grey theme for shell and syntax"
+echo "Reboot to enjoy your final setup:"
 echo "  sudo reboot"
