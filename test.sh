@@ -1,12 +1,12 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH + Soft Colors)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH + Starship)
 # by Dennis Hilk
 # =============================================================
 
 set -e
 
-### --- Detect User -----------------------------------------------------------
+# --- Detect User -------------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
     REAL_USER=$(logname)
     HOME_DIR=$(eval echo "~$REAL_USER")
@@ -16,7 +16,7 @@ else
 fi
 echo "👤 Detected user: $REAL_USER (home: $HOME_DIR)"
 
-### --- Detect VM -------------------------------------------------------------
+# --- Detect VM ---------------------------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
     PICOM_BACKEND="xrender"
     echo "💻 VM detected – Picom backend: xrender"
@@ -25,20 +25,20 @@ else
     echo "🧠 Native system – Picom backend: glx"
 fi
 
-### --- Base install ----------------------------------------------------------
+# --- Base install ------------------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
                     build-essential git curl wget zram-tools alacritty unzip \
                     plymouth-themes grub2-common zsh
 
-# Enable ZRAM
+# --- ZRAM --------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
 sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured (zstd, 50 % RAM, prio 100)"
 
-### --- Nerd Fonts ------------------------------------------------------------
+# --- Nerd Fonts --------------------------------------------------------------
 echo "🔤 Installing JetBrainsMono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
@@ -48,7 +48,7 @@ sudo fc-cache -fv >/dev/null
 cd ~
 echo "✅ Nerd Font installed successfully!"
 
-### --- Alacritty config (soft colors) ----------------------------------------
+# --- Alacritty config (soft colors) ------------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
@@ -59,9 +59,6 @@ padding = { x = 6, y = 4 }
 
 [font]
 normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
-bold = { family = "JetBrainsMono Nerd Font", style = "Bold" }
-italic = { family = "JetBrainsMono Nerd Font", style = "Italic" }
-bold_italic = { family = "JetBrainsMono Nerd Font", style = "Bold Italic" }
 size = 11.0
 
 [colors.primary]
@@ -78,30 +75,12 @@ magenta = "0x996699"
 cyan    = "0x66aaaa"
 white   = "0xcccccc"
 
-[colors.bright]
-black   = "0x333333"
-red     = "0xcc6666"
-green   = "0x99cc99"
-yellow  = "0xcccc88"
-blue    = "0x88aacc"
-magenta = "0xbb88bb"
-cyan    = "0x88cccc"
-white   = "0xffffff"
-
 [colors.cursor]
 text = "0x0a0a0a"
 cursor = "0x00ff99"
-
-[cursor.style]
-shape = "Block"
-blinking = "On"
-
-[scrolling]
-history = 10000
-multiplier = 3
 EOF
 
-### --- Picom config ----------------------------------------------------------
+# --- Picom config ------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/picom.conf" <<EOF
 backend = "${PICOM_BACKEND}";
@@ -119,7 +98,7 @@ inactive-opacity = 0.85;
 active-opacity = 1.0;
 EOF
 
-### --- Wallpaper -------------------------------------------------------------
+# --- Wallpaper ---------------------------------------------------------------
 sudo mkdir -p /usr/share/backgrounds
 if [ -f "./coding-2.png" ]; then
   sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
@@ -128,7 +107,7 @@ else
   echo "⚠️ coding-2.png not found — please copy later to /usr/share/backgrounds/wallpaper.png"
 fi
 
-### --- Autostart -------------------------------------------------------------
+# --- Autostart ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.dwm"
 cat > "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
 #!/bin/bash
@@ -151,7 +130,7 @@ if ! grep -q startx "$HOME_DIR/.bash_profile" 2>/dev/null; then
   echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$HOME_DIR/.bash_profile"
 fi
 
-### --- GPU setup -------------------------------------------------------------
+# --- GPU setup ---------------------------------------------------------------
 echo
 echo "🎮 GPU Setup"
 echo "1 = NVIDIA"
@@ -161,76 +140,61 @@ read -p "Select GPU option (1/2/3): " gpu_choice
 
 case "$gpu_choice" in
   1)
-    echo "🔧 Installing NVIDIA drivers..."
     sudo apt install -y linux-headers-$(uname -r) nvidia-driver nvidia-smi \
-      nvidia-settings nvidia-cuda-toolkit libnvidia-encode1 ffmpeg nv-codec-headers
-    ;;
+      nvidia-settings nvidia-cuda-toolkit libnvidia-encode1 ffmpeg nv-codec-headers ;;
   2)
-    echo "🔧 Installing AMD drivers..."
     sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
-      libdrm-amdgpu1 mesa-utils libgl1-mesa-dri ffmpeg mesa-va-drivers vainfo
-    ;;
-  3)
-    echo "❎ Skipping GPU installation."
-    ;;
-  *)
-    echo "⚠️ Invalid input — skipping GPU installation."
-    ;;
+      libdrm-amdgpu1 mesa-utils libgl1-mesa-dri ffmpeg mesa-va-drivers vainfo ;;
+  *) echo "❎ Skipping GPU installation." ;;
 esac
 
-### --- ZSH + Oh My Zsh + Powerlevel10k --------------------------------------
-echo "💀 Installing ZSH + Oh-My-Zsh + Powerlevel10k (headless)..."
+# --- ZSH + Oh My Zsh + Starship ---------------------------------------------
+echo "💀 Installing ZSH + Oh-My-Zsh + Starship..."
 sudo apt install -y git zsh curl
 
 # Install Oh My Zsh headless
 sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
-# Install Powerlevel10k
-sudo -u "$REAL_USER" git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$HOME_DIR/.oh-my-zsh/custom/themes/powerlevel10k"
-
 # Install ZSH plugins manually
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 
-# Configure ZSH
+# Install Starship
+sudo curl -fsSL https://starship.rs/install.sh | sudo bash -s -- -y
+mkdir -p "$HOME_DIR/.config"
+
+# Configure ZSH to use Starship
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
-ZSH_THEME="powerlevel10k/powerlevel10k"
+ZSH_THEME=""
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
 source $ZSH/oh-my-zsh.sh
-[[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
+eval "$(starship init zsh)"
 EOF
 
-# Minimal Powerlevel10k config (soft colors)
-cat > "$HOME_DIR/.p10k.zsh" <<'EOF'
-# Minimal clean Powerlevel10k prompt (soft colors)
-typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
-typeset -g POWERLEVEL9K_RIGHT_PROMPT_ELEMENTS=()
-typeset -g POWERLEVEL9K_PROMPT_ADD_NEWLINE=false
-typeset -g POWERLEVEL9K_MODE=nerdfont-complete
-typeset -g POWERLEVEL9K_COLOR_SCHEME='dark'
-typeset -g POWERLEVEL9K_DIR_FOREGROUND=248
-typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=244
-typeset -g POWERLEVEL9K_VCS_FOREGROUND=108
-EOF
-
-# Adjust syntax highlighting colors
-cat > "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting/highlighters/main/main-highlighter.zsh" <<'EOF'
-ZSH_HIGHLIGHT_STYLES[command]="fg=244"
-ZSH_HIGHLIGHT_STYLES[alias]="fg=245"
-ZSH_HIGHLIGHT_STYLES[builtin]="fg=244"
-ZSH_HIGHLIGHT_STYLES[function]="fg=245"
-ZSH_HIGHLIGHT_STYLES[path]="fg=242"
+# Configure Starship (dark minimal)
+cat > "$HOME_DIR/.config/starship.toml" <<'EOF'
+add_newline = false
+format = """$directory$git_branch$git_status$character"""
+[character]
+success_symbol = "[❯](bold green)"
+error_symbol = "[❯](bold red)"
+[git_branch]
+format = " [ $branch]($style)"
+style = "bold dimmed green"
+[git_status]
+style = "dimmed red"
+[directory]
+style = "dimmed white"
+truncation_length = 3
 EOF
 
 # Set default shell
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
+echo "✅ Installed ZSH + Oh-My-Zsh + Starship (minimal dark)."
 
-echo "✅ Installed ZSH + Oh-My-Zsh + Powerlevel10k (minimal soft colors)."
-
-### --- GRUB Dark Config ------------------------------------------------------
-echo "🧠 Applying custom dark GRUB configuration..."
+# --- GRUB Dark Config --------------------------------------------------------
 sudo bash -c "cat > /etc/default/grub <<'EOF'
 GRUB_DEFAULT=0
 GRUB_TIMEOUT_STYLE=menu
@@ -246,18 +210,15 @@ GRUB_COLOR_HIGHLIGHT='black/light-green'
 EOF"
 sudo update-grub
 
-### --- Plymouth --------------------------------------------------------------
+# --- Plymouth ---------------------------------------------------------------
 sudo plymouth-set-default-theme spinner
 sudo update-initramfs -u
 
-### --- Permissions -----------------------------------------------------------
-sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
-
+# --- Final message ----------------------------------------------------------
 echo
-echo "✅ Final Debian DWM Dark setup complete!"
+echo "✅ Final Debian DWM + ZSH + Starship setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "💀 ZSH + Powerlevel10k (minimal clean, soft colors)"
-echo "🎨 Subtle green-grey theme for shell and syntax"
-echo "Reboot to enjoy your final setup:"
+echo "🚀 Starship active with dark minimal theme"
+echo "Reboot to enjoy your new clean setup:"
 echo "  sudo reboot"
