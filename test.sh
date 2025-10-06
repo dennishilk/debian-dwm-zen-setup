@@ -316,6 +316,37 @@ EOF
 
 # ----------[ 13. Finish Banner ]----------------------------------------
 clear
+# ----------[ 12. Build Verification ]-----------------------------------
+echo
+echo "───────────────────────────────────────────────"
+echo "🔍 Verifying DWM stack build integrity..."
+echo "───────────────────────────────────────────────"
+
+check_build() {
+  local name="$1"
+  local path="$2"
+  if [ -x "$path" ]; then
+    echo -e "✅  $name: OK ($path)"
+  else
+    echo -e "❌  $name: MISSING or not executable"
+  fi
+}
+
+check_build "dwm" "$HOME_DIR/.config/dwm/dwm"
+check_build "dmenu_run" "$HOME_DIR/.config/dmenu/dmenu_run"
+check_build "slstatus" "$HOME_DIR/.config/slstatus/slstatus"
+
+echo "───────────────────────────────────────────────"
+if [ -x "$HOME_DIR/.config/dwm/dwm" ] && [ -x "$HOME_DIR/.config/dmenu/dmenu_run" ] && [ -x "$HOME_DIR/.config/slstatus/slstatus" ]; then
+  echo "🎉 All suckless components built successfully!"
+else
+  echo "⚠️  One or more components failed. Try rebuilding manually:"
+  echo "    cd ~/.config/dwm && make clean all"
+  echo "    cd ~/.config/dmenu && make clean all"
+  echo "    cd ~/.config/slstatus && make clean all"
+fi
+echo "───────────────────────────────────────────────"
+
 echo "───────────────────────────────────────────────"
 echo "✅ Installation complete – DWM Nerd OS v9.3"
 echo "💻 Reboot and login → Fish auto-starts DWM"
