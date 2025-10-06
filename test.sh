@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Nerd Fonts + ZSH)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Fonts + ZSH)
 # by Dennis Hilk
 # =============================================================
 
@@ -159,11 +159,20 @@ case "$gpu_choice" in
 esac
 
 ### --- ZSH + Oh My Zsh + Powerlevel10k --------------------------------------
-echo "💀 Installing ZSH + Oh-My-Zsh + Powerlevel10k..."
-sudo apt install -y git zsh zsh-syntax-highlighting zsh-autosuggestions
-sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-sudo -u "$REAL_USER" git clone --depth=1 https://github.com/romkatv/powerlevel10k.git $HOME_DIR/.oh-my-zsh/custom/themes/powerlevel10k
+echo "💀 Installing ZSH + Oh-My-Zsh + Powerlevel10k (headless)..."
+sudo apt install -y git zsh curl
 
+# Install Oh My Zsh headless
+sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+
+# Install Powerlevel10k
+sudo -u "$REAL_USER" git clone --depth=1 https://github.com/romkatv/powerlevel10k.git "$HOME_DIR/.oh-my-zsh/custom/themes/powerlevel10k"
+
+# Install ZSH plugins manually
+sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
+sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+
+# Configure ZSH
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME="powerlevel10k/powerlevel10k"
@@ -172,6 +181,7 @@ source $ZSH/oh-my-zsh.sh
 [[ ! -f ~/.p10k.zsh ]] || source ~/.p10k.zsh
 EOF
 
+# Minimal Powerlevel10k config
 cat > "$HOME_DIR/.p10k.zsh" <<'EOF'
 # Minimal clean Powerlevel10k prompt
 typeset -g POWERLEVEL9K_LEFT_PROMPT_ELEMENTS=(context dir vcs)
@@ -184,8 +194,11 @@ typeset -g POWERLEVEL9K_CONTEXT_FOREGROUND=2
 typeset -g POWERLEVEL9K_VCS_FOREGROUND=10
 EOF
 
+# Set default shell
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
-echo "✅ ZSH with Powerlevel10k (minimal clean) installed."
+sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
+
+echo "✅ Installed ZSH + Oh-My-Zsh + Powerlevel10k (minimal) with syntax + autosuggestions."
 
 ### --- GRUB Dark Config ------------------------------------------------------
 echo "🧠 Applying custom dark GRUB configuration..."
@@ -212,9 +225,11 @@ sudo update-initramfs -u
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
 
 echo
-echo "✅ Full DWM + ZSH Minimal Setup complete!"
+echo "✅ Final Debian DWM Dark setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "💀 ZSH + Powerlevel10k minimal prompt ready"
-echo "Reboot to enjoy your clean dark setup:"
+echo "💀 ZSH + Powerlevel10k (minimal clean prompt)"
+echo "🔤 Nerd Fonts fully installed"
+echo "💀 GRUB uses green-on-black dark mode"
+echo "Reboot to enjoy your new setup:"
 echo "  sudo reboot"
