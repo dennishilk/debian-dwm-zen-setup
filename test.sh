@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU Selection)
+# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + Dark GRUB)
 # by Dennis Hilk
 # =============================================================
 
@@ -145,8 +145,22 @@ case "$gpu_choice" in
     ;;
 esac
 
-### --- GRUB (default dark) ---------------------------------------------------
-echo "🧠 Using default Debian GRUB theme (Starfield)"
+### --- GRUB Dark Config ------------------------------------------------------
+echo "🧠 Applying custom dark GRUB configuration..."
+sudo bash -c "cat > /etc/default/grub <<'EOF'
+GRUB_DEFAULT=0
+GRUB_TIMEOUT_STYLE=menu
+GRUB_TIMEOUT=5
+GRUB_DISTRIBUTOR=$(lsb_release -i -s 2>/dev/null || echo Debian)
+GRUB_CMDLINE_LINUX_DEFAULT='quiet splash'
+GRUB_CMDLINE_LINUX=''
+GRUB_TERMINAL=console
+GRUB_GFXMODE=1024x768
+GRUB_GFXPAYLOAD_LINUX=keep
+GRUB_COLOR_NORMAL='light-green/black'
+GRUB_COLOR_HIGHLIGHT='black/light-green'
+EOF"
+
 sudo update-grub
 
 ### --- Plymouth --------------------------------------------------------------
@@ -160,6 +174,6 @@ echo
 echo "✅ Minimal Dark DWM setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
 echo "🎮 GPU driver setup finished"
-echo "🎨 Default dark GRUB, no Conky, no Rofi — pure minimalism"
+echo "💀 GRUB now uses dark terminal look (green on black)"
 echo "Reboot to enjoy:"
 echo "  sudo reboot"
