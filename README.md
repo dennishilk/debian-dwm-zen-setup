@@ -67,6 +67,28 @@ If you want to change this behavior, edit:
 and comment out:
 stterm &
 
+🌈 Transparent Terminal (Picom + stterm)
+
+By default, this setup launches stterm with 80 % transparency:
+
+stterm -A 0.8 &
+
+
+Transparency is handled by Picom, which is enabled automatically with
+picom --experimental-backends &.
+
+If you want to adjust the opacity, edit:
+
+~/.dwm/autostart.sh
+
+
+Example values:
+
+Opacity	Command
+100 % (no transparency)	stterm -A 1.0 &
+80 % (default)	stterm -A 0.8 &
+60 % (more transparent)	stterm -A 0.6 &
+
 
 💡 Tips
 
