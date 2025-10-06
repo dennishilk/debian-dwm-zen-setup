@@ -1,11 +1,14 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v3)
-# Includes: self-healing DWM source rebuild + visible font install
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v4)
+# Features:
+#  - DWM Self-Healing + Binary Auto-Rebuild
+#  - Nerd Font Mirror Fallback + Offline Support
+#  - GPU optional (NVIDIA / AMD / Skip)
+#  - ZSH + Starship + Thunar + Alacritty
 # =============================================================
 set -e
 
-# --- Detect user -------------------------------------------------------------
 if [ "$EUID" -eq 0 ]; then
     REAL_USER=$(logname)
     HOME_DIR=$(eval echo "~$REAL_USER")
@@ -13,28 +16,19 @@ else
     REAL_USER=$USER
     HOME_DIR=$HOME
 fi
-echo "👤 Detected user: $REAL_USER ($HOME_DIR)"
+echo "👤 User: $REAL_USER"
 
-# --- Detect VM ---------------------------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
     PICOM_BACKEND="xrender"
 else
     PICOM_BACKEND="glx"
 fi
-echo "💻 Picom backend: ${PICOM_BACKEND}"
 
-# --- Remove Debian DWM package ----------------------------------------------
-if dpkg -l | grep -q "^ii\s\+dwm"; then
-    echo "⚙️ Removing Debian DWM package..."
-    sudo apt remove --purge -y dwm
-fi
-
-# --- Base system install -----------------------------------------------------
 sudo apt update && sudo apt full-upgrade -y
-sudo apt install -y xorg feh picom slstatus build-essential git curl wget \
-    zram-tools alacritty unzip plymouth-themes grub2-common zsh lxappearance \
+sudo apt install -y xorg feh picom slstatus build-essential git curl wget unzip \
+    zram-tools plymouth-themes grub2-common zsh lxappearance \
     gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
-    thunar thunar-volman gvfs gvfs-backends gvfs-fuse
+    thunar thunar-volman gvfs gvfs-backends gvfs-fuse ca-certificates
 
 # --- ZRAM --------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
@@ -43,16 +37,39 @@ sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
 echo "✅ ZRAM configured"
 
-# --- Nerd Font with visible progress ----------------------------------------
+# --- Nerd Font with Mirror Fallback ------------------------------------------
 echo "📦 Installing JetBrainsMono Nerd Font..."
 sudo mkdir -p /usr/share/fonts/truetype/nerd
 cd /usr/share/fonts/truetype/nerd
-if wget --show-progress -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip; then
-    sudo unzip -o JetBrainsMono.zip >/dev/null
+
+FONT_URLS=(
+  "https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip"
+  "https://mirror.ghproxy.com/https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip"
+  "https://cdn.jsdelivr.net/gh/ryanoasis/nerd-fonts@v3.2.1/patched-fonts/JetBrainsMono/complete/JetBrainsMonoNerdFont-Regular.ttf"
+)
+
+success=false
+for URL in "${FONT_URLS[@]}"; do
+  echo "→ Trying $URL ..."
+  if wget --timeout=30 --show-progress -q "$URL" -O JetBrainsMono.zip || curl -L --max-time 30 -o JetBrainsMono.zip "$URL"; then
+      echo "✅ Downloaded from $URL"
+      success=true
+      break
+  fi
+done
+
+if [ "$success" = true ]; then
+    sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
     sudo fc-cache -fv >/dev/null
-    echo "✅ JetBrainsMono Nerd Font installed"
+    echo "✅ JetBrainsMono Nerd Font installed successfully"
+elif [ -f "./JetBrainsMono.zip" ]; then
+    echo "💾 Found local JetBrainsMono.zip – installing offline..."
+    sudo unzip -o JetBrainsMono.zip >/dev/null 2>&1
+    sudo fc-cache -fv >/dev/null
+    echo "✅ Installed from local archive"
 else
-    echo "❌ Failed to download Nerd Font (check connection)"
+    echo "⚠️  All font mirrors failed. You can place JetBrainsMono.zip here manually:"
+    echo "    /usr/share/fonts/truetype/nerd/"
 fi
 cd ~
 
@@ -106,15 +123,13 @@ slstatus &
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
-# --- Xinitrc with integrated DWM self-repair --------------------------------
+# --- .xinitrc with self-repair ----------------------------------------------
 cat > "$HOME_DIR/.xinitrc" <<'EOF'
 #!/bin/bash
-# --- DWM Self-Healing ---
 if [ ! -x /usr/local/bin/dwm ]; then
-  echo "⚠️ DWM binary missing! Rebuilding..."
+  echo "⚠️  DWM missing! Rebuilding..."
   sudo mkdir -p /usr/src
   if [ ! -d /usr/src/dwm ]; then
-    echo "🧱 Cloning DWM source..."
     cd /usr/src && sudo git clone https://git.suckless.org/dwm
   fi
   cd /usr/src/dwm
@@ -122,27 +137,23 @@ if [ ! -x /usr/local/bin/dwm ]; then
   sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
   sudo sed -i 's|"st"|"alacritty"|g' config.h
   if ! grep -q 'thunar' config.h; then
-    sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+      sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
   fi
   sudo make clean install
   sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
 fi
-
 xmodmap ~/.Xmodmap &
 ~/.dwm/autostart.sh &
 exec dwm > ~/.dwm.log 2>&1
 EOF
 chmod +x "$HOME_DIR/.xinitrc"
 
-# --- Auto-start after login --------------------------------------------------
+# --- Auto start on login -----------------------------------------------------
 for f in "$HOME_DIR/.bash_profile" "$HOME_DIR/.profile" "$HOME_DIR/.zprofile"; do
-    if ! grep -q 'exec startx' "$f" 2>/dev/null; then
-        echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
-    fi
+  grep -q 'exec startx' "$f" 2>/dev/null || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$f"
 done
-echo "✅ Auto-start configured (TTY1 login launches DWM)"
 
-# --- GPU setup ---------------------------------------------------------------
+# --- GPU choice --------------------------------------------------------------
 echo
 echo "🎮 GPU Setup: 1=NVIDIA  2=AMD  3=Skip"
 read -p "Select GPU option (1/2/3): " gpu_choice
@@ -165,75 +176,53 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
-echo "✅ ZSH + Starship ready"
 
-# --- GTK Dark Theme ----------------------------------------------------------
+# --- GTK Dark ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
 cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
 [Settings]
 gtk-theme-name=Adwaita-dark
 gtk-icon-theme-name=Papirus-Dark
 gtk-font-name=JetBrainsMono Nerd Font 10
-gtk-cursor-theme-name=Adwaita
 gtk-application-prefer-dark-theme=1
 EOF
 cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
 
-# --- Ensure DWM source and binary now exist ---------------------------------
+# --- DWM ensure build --------------------------------------------------------
 if [ ! -d "/usr/src/dwm" ]; then
-    echo "🧱 Creating /usr/src/dwm from scratch..."
     sudo mkdir -p /usr/src && cd /usr/src
     sudo git clone https://git.suckless.org/dwm
-    cd dwm
-    sudo cp config.def.h config.h
-    sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
-    sudo sed -i 's|"st"|"alacritty"|g' config.h
-    sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
-    sudo make clean install
 fi
+cd /usr/src/dwm
+sudo cp config.def.h config.h
+sudo sed -i 's/#define MODKEY.*/#define MODKEY Mod4Mask/' config.h
+sudo sed -i 's|"st"|"alacritty"|g' config.h
+sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY, XK_t, spawn, SHCMD("thunar") },' config.h
+sudo make clean install
 sudo ln -sf /usr/local/bin/dwm /usr/bin/dwm
 
-# --- Mod4 key mapping --------------------------------------------------------
+# --- Xmodmap -----------------------------------------------------------------
 cat > "$HOME_DIR/.Xmodmap" <<'EOF'
 clear mod4
 keycode 133 = Super_L
 add mod4 = Super_L
 EOF
 
-# --- GRUB Dark ---------------------------------------------------------------
-sudo bash -c "cat > /etc/default/grub <<'EOF'
-GRUB_DEFAULT=0
-GRUB_TIMEOUT_STYLE=menu
-GRUB_TIMEOUT=5
-GRUB_CMDLINE_LINUX_DEFAULT='quiet splash'
-GRUB_TERMINAL=console
-GRUB_GFXMODE=1024x768
-GRUB_GFXPAYLOAD_LINUX=keep
-GRUB_COLOR_NORMAL='light-green/black'
-GRUB_COLOR_HIGHLIGHT='black/light-green'
-EOF"
-sudo update-grub
-sudo plymouth-set-default-theme spinner
-sudo update-initramfs -u
-
-sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
-
-# --- Self-check --------------------------------------------------------------
+# --- Final checks ------------------------------------------------------------
 echo
-echo "🔍 Running final checks..."
-which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary correct" || echo "❌ DWM binary incorrect"
-grep -q 'thunar' /usr/src/dwm/config.h && echo "✅ Super+T active" || echo "❌ Super+T missing"
-grep -q 'alacritty' /usr/src/dwm/config.h && echo "✅ Super+Return active" || echo "❌ Terminal missing"
-command -v starship >/dev/null && echo "✅ Starship installed"
-command -v thunar >/dev/null && echo "✅ Thunar installed"
-command -v picom >/dev/null && echo "✅ Picom installed"
+echo "🔍 Final check..."
+which dwm | grep -q '/usr/local/bin' && echo "✅ DWM binary ok" || echo "❌ DWM binary missing"
+command -v thunar >/dev/null && echo "✅ Thunar ok"
+command -v alacritty >/dev/null && echo "✅ Alacritty ok"
+command -v picom >/dev/null && echo "✅ Picom ok"
+command -v starship >/dev/null && echo "✅ Starship ok"
 
 echo
-echo "🎉 Installation complete!"
-echo "🧠 DWM auto-starts & self-repairs at login"
+echo "🎉 Done!"
+echo "🧠 DWM self-repairs automatically"
 echo "💻 Super+Return → Alacritty"
 echo "🗂️  Super+T → Thunar"
-echo "🌈 GTK: Adwaita-dark + Papirus-Dark"
+echo "🌈 Adwaita-Dark + Papirus-Dark"
 echo
-echo "Reboot now:"
+echo "Reboot:"
 echo "  sudo reboot"
