@@ -1,15 +1,14 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + Wallpaper + GPU (NVIDIA/AMD/None)
-# Compatible with minimal Proxmox installations
+# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM (Signed Repos)
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
 
 set -e
 
-# --- 1️⃣ Debian Repositories aktivieren ----------------------------------------
+# --- 1️⃣ Repositories ---------------------------------------------------------
 echo "=== 🧩 1. Configure Debian repositories ==="
 CODENAME=$(grep VERSION_CODENAME /etc/os-release | cut -d= -f2)
 sudo bash -c "cat > /etc/apt/sources.list <<EOF
@@ -21,31 +20,46 @@ EOF"
 
 sudo apt update && sudo apt full-upgrade -y
 
-# --- 2️⃣ Basiswerkzeuge --------------------------------------------------------
-echo "=== ⚙️ 2. Installing base tools ==="
-sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg lsb-release apt-transport-https
+# --- 2️⃣ Basispakete + ZRAM ---------------------------------------------------
+echo "=== ⚙️ 2. Installing base tools and ZRAM ==="
+sudo apt install -y build-essential git curl wget nano unzip ca-certificates gnupg \
+  lsb-release apt-transport-https zram-tools
 
-# --- 3️⃣ DWM + Desktop Tools ---------------------------------------------------
+echo "=== 🧠 Enabling and configuring ZRAM ==="
+sudo systemctl enable --now zramswap.service
+if [ -f /etc/default/zramswap ]; then
+  sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
+  sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
+  sudo sed -i 's/^#*PRIORITY=.*/PRIORITY=100/' /etc/default/zramswap
+  echo "✅ ZRAM configured (zstd, 50% RAM, priority 100)"
+fi
+
+# --- 3️⃣ DWM + Tools ----------------------------------------------------------
 echo "=== 💻 3. Installing DWM and desktop utilities ==="
 sudo apt install -y xorg dwm suckless-tools stterm feh picom slstatus mesa-utils vulkan-tools
 
-# --- 4️⃣ Zen Kernel (Liquorix) ------------------------------------------------
-echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix) ==="
+# --- 4️⃣ Zen Kernel (Liquorix, signed) ---------------------------------------
+echo "=== ⚙️ 4. Installing Zen Kernel (Liquorix, signed) ==="
 
-# Prüfen, ob add-apt-repository existiert
 if command -v add-apt-repository >/dev/null 2>&1; then
-  echo "→ add-apt-repository detected, using PPA method"
+  echo "→ Using add-apt-repository"
   sudo add-apt-repository -y ppa:damentz/liquorix || true
 else
-  echo "→ add-apt-repository not found, adding Liquorix repository manually"
-  echo "deb http://liquorix.net/debian sid main" | sudo tee /etc/apt/sources.list.d/liquorix.list
-  curl -fsSL https://liquorix.net/liquorix-keyring.gpg | sudo gpg --dearmor -o /usr/share/keyrings/liquorix.gpg
+  echo "→ Manually adding signed Liquorix repository"
+  # Remove any unsigned version
+  sudo rm -f /etc/apt/sources.list.d/liquorix.list
+  # Add key securely
+  sudo mkdir -p /usr/share/keyrings
+  curl -fsSL https://liquorix.net/liquorix-keyring.gpg | \
+    sudo gpg --dearmor -o /usr/share/keyrings/liquorix-keyring.gpg
+  # Add signed repo entry
+  echo "deb [signed-by=/usr/share/keyrings/liquorix-keyring.gpg] http://liquorix.net/debian sid main" | \
+    sudo tee /etc/apt/sources.list.d/liquorix.list
 fi
 
 sudo apt update
-sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || {
+sudo apt install -y linux-image-liquorix-amd64 linux-headers-liquorix-amd64 || \
   echo "⚠️  Liquorix kernel not available – keeping default kernel."
-}
 
 # --- 5️⃣ Wallpaper ------------------------------------------------------------
 echo "=== 🖼️ 5. Setting up wallpaper ==="
@@ -54,10 +68,10 @@ if [ -f "./coding-2.png" ]; then
   sudo cp ./coding-2.png /usr/share/backgrounds/wallpaper.png
   echo "✅ Wallpaper installed: /usr/share/backgrounds/wallpaper.png"
 else
-  echo "⚠️  coding-2.png not found – please copy it manually later."
+  echo "⚠️  coding-2.png not found – please copy manually later."
 fi
 
-# --- 6️⃣ Autostart + Xinitrc --------------------------------------------------
+# --- 6️⃣ DWM Autostart --------------------------------------------------------
 echo "=== ⚙️ 6. Configuring DWM autostart and Xinitrc ==="
 mkdir -p ~/.dwm
 cat > ~/.dwm/autostart.sh <<'EOF'
@@ -75,7 +89,7 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# --- 7️⃣ Auto-Login -----------------------------------------------------------
+# --- 7️⃣ Auto-login -----------------------------------------------------------
 echo "=== 🔧 7. Enabling auto-login to DWM on tty1 ==="
 PROFILE=/home/$USER/.bash_profile
 grep -q startx "$PROFILE" || echo '[[ -z $DISPLAY && $XDG_VTNR -eq 1 ]] && exec startx' >> "$PROFILE"
@@ -95,7 +109,6 @@ case "$gpu_choice" in
     echo "=== 🧩 Installing NVIDIA drivers ==="
     sudo apt install -y linux-headers-$(uname -r) \
       nvidia-driver nvidia-smi nvidia-settings nvidia-cuda-toolkit libnvidia-encode1
-    echo "=== 🎬 Installing NVENC support ==="
     sudo apt install -y ffmpeg nv-codec-headers || true
     echo "🔍 Test with: nvidia-smi"
     ;;
@@ -103,7 +116,6 @@ case "$gpu_choice" in
     echo "=== 🧩 Installing AMD drivers ==="
     sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools \
       libdrm-amdgpu1 mesa-utils libgl1-mesa-dri
-    echo "=== 🎬 Installing VAAPI support ==="
     sudo apt install -y ffmpeg mesa-va-drivers vainfo || true
     echo "🔍 Test with: vainfo | grep Driver"
     ;;
@@ -118,6 +130,6 @@ esac
 # --- 9️⃣ Abschluss ------------------------------------------------------------
 echo
 echo "✅ Installation complete!"
-echo "Your Debian system is now running with DWM, Zen Kernel, and optional GPU support."
-echo "Reboot now to apply changes:"
+echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix, signed) + ZRAM."
+echo "Reboot to apply all changes:"
 echo "  sudo reboot"
