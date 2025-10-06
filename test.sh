@@ -1,8 +1,7 @@
 #!/bin/bash
 # =============================================================
 # 🧠 Debian 13 (Trixie) Universal Setup
-# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty + Picom transparency
-# Auto-terminal for Proxmox / NoVNC
+# DWM + Zen Kernel + GPU (NVIDIA/AMD/None) + ZRAM + Alacritty (TOML) + Picom Transparency
 # Author: Dennis Hilk
 # License: MIT
 # =============================================================
@@ -63,35 +62,37 @@ else
 fi
 
 # --- 6️⃣ Install Alacritty ----------------------------------------------------
-echo "=== 🌈 6. Installing Alacritty (GPU-accelerated transparent terminal) ==="
+echo "=== 🌈 6. Installing Alacritty (GPU-accelerated terminal) ==="
 sudo apt install -y alacritty || {
   echo "⚠️  Alacritty not found – falling back to stterm."
   sudo apt install -y stterm
 }
 
-# --- 7️⃣ Configure Alacritty + Picom for transparency -------------------------
-echo "=== 🎨 7. Creating Alacritty and Picom configs (80% opacity) ==="
-
+# --- 7️⃣ Configure Alacritty (TOML) + Picom -----------------------------------
+echo "=== 🎨 7. Creating Alacritty (TOML) + Picom configs ==="
 mkdir -p ~/.config/alacritty
-cat > ~/.config/alacritty/alacritty.yml <<'EOF'
-window:
-  opacity: 0.8
-  decorations: none
-  dynamic_title: true
-font:
-  normal:
-    family: monospace
-    style: Regular
-  size: 11.0
-colors:
-  primary:
-    background: '0x000000'
-    foreground: '0xffffff'
-  cursor:
-    text: '0x000000'
-    cursor: '0xffffff'
-scrolling:
-  history: 10000
+cat > ~/.config/alacritty/alacritty.toml <<'EOF'
+[window]
+opacity = 0.8
+decorations = "none"
+dynamic_title = true
+padding = { x = 6, y = 4 }
+
+[font]
+normal = { family = "monospace", style = "Regular" }
+size = 11.0
+
+[colors.primary]
+background = "0x000000"
+foreground = "0xffffff"
+
+[cursor]
+text = "0x000000"
+cursor = "0xffffff"
+
+[scrolling]
+history = 10000
+multiplier = 3
 EOF
 
 mkdir -p ~/.config
@@ -169,6 +170,6 @@ esac
 # --- ✅ Done -----------------------------------------------------------------
 echo
 echo "✅ Installation complete!"
-echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty transparency."
+echo "System running Debian ${CODENAME} + DWM + Zen Kernel (Liquorix) + ZRAM + Alacritty (TOML) transparency."
 echo "Reboot now to apply changes:"
 echo "  sudo reboot"
