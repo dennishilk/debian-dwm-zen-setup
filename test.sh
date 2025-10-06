@@ -1,9 +1,9 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.3)
-#  - Local user build (~/.config/dwm, ~/.config/dmenu, ~/.config/slstatus)
-#  - No root needed for rebuilds
-#  - Alacritty + ZSH + Starship + Safe-Mode
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Auto-Fix v8.4)
+#  - Local builds in ~/.config/{dwm,dmenu,slstatus}
+#  - Non-interactive ZSH + Starship setup
+#  - Safe mode support for VMs (xrender + xterm)
 # =============================================================
 set -e
 
@@ -32,7 +32,7 @@ else
   echo "💻 GPU detected → Alacritty & Picom enabled"
 fi
 
-# --- Base system packages ---------------------------------------------------
+# --- Base packages ----------------------------------------------------------
 sudo apt update -y
 sudo apt install -y xorg feh picom build-essential git curl wget unzip \
   libx11-dev libxft-dev libxinerama-dev zram-tools zsh lxappearance \
@@ -117,8 +117,8 @@ cat >> "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
 EOF
 chmod +x "$HOME_DIR/.dwm/autostart.sh"
 
-# --- DWM local build --------------------------------------------------------
-echo "🔧 Building DWM, DMENU, SLSTATUS in ~/.config ..."
+# --- DWM local builds -------------------------------------------------------
+echo "🔧 Building DWM, DMENU, SLSTATUS locally..."
 for repo in dwm dmenu slstatus; do
   mkdir -p "$HOME_DIR/.config/$repo"
   if [ ! -d "$HOME_DIR/.config/$repo/.git" ]; then
@@ -170,17 +170,23 @@ case "$gpu_choice" in
   *) echo "Skipping GPU installation." ;;
 esac
 
-# --- ZSH + Starship ---------------------------------------------------------
-echo "🐚 Installing ZSH + Starship..."
+# --- ZSH + Starship (non-interactive) --------------------------------------
+echo "🐚 Installing ZSH + Starship (non-interactive)..."
+
 sudo apt install -y zsh git curl
-if [ ! -d "$HOME_DIR/.oh-my-zsh" ]; then
-  sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-  sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
-  sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
+ZSH_DIR="$HOME_DIR/.oh-my-zsh"
+if [ ! -d "$ZSH_DIR" ]; then
+  echo "📦 Cloning Oh My Zsh manually..."
+  git clone https://github.com/ohmyzsh/ohmyzsh.git "$ZSH_DIR"
+  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$ZSH_DIR/custom/plugins/zsh-syntax-highlighting"
+  git clone https://github.com/zsh-users/zsh-autosuggestions.git "$ZSH_DIR/custom/plugins/zsh-autosuggestions"
 fi
+
 if ! command -v starship >/dev/null; then
-  bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
+  echo "📦 Installing Starship prompt..."
+  curl -fsSL https://starship.rs/install.sh | bash -s -- -y >/dev/null 2>&1
 fi
+
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 plugins=(git zsh-syntax-highlighting zsh-autosuggestions)
@@ -188,7 +194,7 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
-echo "✅ Alacritty now launches ZSH with Starship prompt."
+echo "✅ ZSH installed (non-interactive)."
 
 # --- GTK Dark ---------------------------------------------------------------
 mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
