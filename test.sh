@@ -1,7 +1,6 @@
 #!/bin/bash
 # =============================================================
-# 🧠 Debian 13 DWM Full Setup (Minimal Dark + GPU + ZSH + Starship)
-# by Dennis Hilk
+# 🧠 Debian 13 DWM Full Dark Setup (Dennis Hilk Edition)
 # =============================================================
 
 set -e
@@ -14,7 +13,7 @@ else
     REAL_USER=$USER
     HOME_DIR=$HOME
 fi
-echo "👤 Detected user: $REAL_USER (home: $HOME_DIR)"
+echo "👤 Detected user: $REAL_USER ($HOME_DIR)"
 
 # --- Detect VM ---------------------------------------------------------------
 if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
@@ -29,7 +28,8 @@ fi
 sudo apt update && sudo apt full-upgrade -y
 sudo apt install -y xorg dwm suckless-tools feh picom slstatus \
                     build-essential git curl wget zram-tools alacritty unzip \
-                    plymouth-themes grub2-common zsh
+                    plymouth-themes grub2-common zsh lxappearance gtk2-engines-murrine \
+                    adwaita-icon-theme-full papirus-icon-theme
 
 # --- ZRAM --------------------------------------------------------------------
 sudo systemctl enable --now zramswap.service
@@ -48,13 +48,12 @@ sudo fc-cache -fv >/dev/null
 cd ~
 echo "✅ Nerd Font installed successfully!"
 
-# --- Alacritty config (soft colors) ------------------------------------------
+# --- Alacritty config (soft dark colors) -------------------------------------
 mkdir -p "$HOME_DIR/.config/alacritty"
 cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
 [window]
 opacity = 0.8
 decorations = "none"
-dynamic_title = true
 padding = { x = 6, y = 4 }
 
 [font]
@@ -152,19 +151,15 @@ esac
 echo "💀 Installing ZSH + Oh-My-Zsh + Starship..."
 sudo apt install -y git zsh curl
 
-# Install Oh My Zsh (headless)
 sudo -u "$REAL_USER" sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
-# Install ZSH plugins manually
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-syntax-highlighting.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting"
 sudo -u "$REAL_USER" git clone https://github.com/zsh-users/zsh-autosuggestions.git "$HOME_DIR/.oh-my-zsh/custom/plugins/zsh-autosuggestions"
 
-# Install Starship safely (no POSIX warning)
-echo "🚀 Installing Starship prompt (POSIX-safe mode)..."
+echo "🚀 Installing Starship prompt (POSIX-safe)..."
 bash <(curl -fsSL https://starship.rs/install.sh) -y >/dev/null 2>&1
 echo "✅ Starship installed successfully."
 
-# Configure ZSH to use Starship
 cat > "$HOME_DIR/.zshrc" <<'EOF'
 export ZSH="$HOME/.oh-my-zsh"
 ZSH_THEME=""
@@ -173,7 +168,6 @@ source $ZSH/oh-my-zsh.sh
 eval "$(starship init zsh)"
 EOF
 
-# Configure Starship (dark minimal theme)
 mkdir -p "$HOME_DIR/.config"
 cat > "$HOME_DIR/.config/starship.toml" <<'EOF'
 add_newline = false
@@ -191,10 +185,50 @@ style = "dimmed white"
 truncation_length = 3
 EOF
 
-# --- Set default shell -------------------------------------------------------
 sudo chsh -s /usr/bin/zsh "$REAL_USER"
 sudo chown -R "$REAL_USER:$REAL_USER" "$HOME_DIR"
-echo "✅ Installed ZSH + Oh-My-Zsh + Starship (minimal dark)."
+echo "✅ ZSH + Starship ready."
+
+# --- Thunar + Dark GTK Theme -------------------------------------------------
+echo "📂 Installing Thunar with Dark Theme..."
+sudo apt install -y thunar thunar-volman gvfs gvfs-backends gvfs-fuse
+
+mkdir -p "$HOME_DIR/.config/gtk-3.0" "$HOME_DIR/.config/gtk-4.0"
+cat > "$HOME_DIR/.config/gtk-3.0/settings.ini" <<'EOF'
+[Settings]
+gtk-theme-name=Adwaita-dark
+gtk-icon-theme-name=Papirus-Dark
+gtk-font-name=JetBrainsMono Nerd Font 10
+gtk-cursor-theme-name=Adwaita
+gtk-application-prefer-dark-theme=1
+EOF
+cp "$HOME_DIR/.config/gtk-3.0/settings.ini" "$HOME_DIR/.config/gtk-4.0/settings.ini"
+echo "✅ GTK Dark Theme (Adwaita-dark + Papirus-Dark) enabled."
+
+# --- Add DWM Keybinds --------------------------------------------------------
+if [ -d "/usr/src/dwm" ]; then
+    DWM_DIR="/usr/src/dwm"
+elif [ -d "$HOME_DIR/dwm" ]; then
+    DWM_DIR="$HOME_DIR/dwm"
+else
+    echo "⚠️  DWM source not found — skipping keybind patch."
+    DWM_DIR=""
+fi
+
+if [ -n "$DWM_DIR" ]; then
+    sudo cp "$DWM_DIR/config.h" "$DWM_DIR/config.h.bak"
+    if ! grep -q "thunar" "$DWM_DIR/config.h"; then
+        sudo sed -i '/{ MODKEY,.*XK_Return/,/},/a\    { MODKEY,                       XK_t,      spawn,          SHCMD("thunar") },' "$DWM_DIR/config.h"
+        echo "✅ Added Super + T → Thunar"
+    fi
+    if grep -q "st" "$DWM_DIR/config.h"; then
+        sudo sed -i 's|"st"|"alacritty"|g' "$DWM_DIR/config.h"
+        echo "✅ Updated Super + Return → Alacritty"
+    fi
+    cd "$DWM_DIR"
+    sudo make clean install
+    echo "⚙️  DWM recompiled with new keybinds."
+fi
 
 # --- GRUB Dark Config --------------------------------------------------------
 sudo bash -c "cat > /etc/default/grub <<'EOF'
@@ -212,15 +246,18 @@ GRUB_COLOR_HIGHLIGHT='black/light-green'
 EOF"
 sudo update-grub
 
-# --- Plymouth ---------------------------------------------------------------
 sudo plymouth-set-default-theme spinner
 sudo update-initramfs -u
 
-# --- Final message ----------------------------------------------------------
+# --- Final Summary -----------------------------------------------------------
 echo
-echo "✅ Final Debian DWM + Starship setup complete!"
+echo "✅ Debian DWM Full Dark Setup complete!"
 echo "💻 Picom backend: ${PICOM_BACKEND}"
-echo "🎮 GPU driver setup finished"
-echo "🚀 Starship prompt active (dark minimal)"
-echo "Reboot to enjoy your new system:"
+echo "🎮 GPU driver: ${gpu_choice}"
+echo "🧠 ZSH + Starship active"
+echo "🗂️  Thunar (Dark + Papirus) → Super + T"
+echo "💻 Alacritty → Super + Return"
+echo "🌈 GTK Theme: Adwaita-dark + Papirus-Dark"
+echo
+echo "Reboot to enter your final Linux Nerd Desktop 🐧"
 echo "  sudo reboot"
