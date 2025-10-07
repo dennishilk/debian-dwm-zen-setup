@@ -50,7 +50,7 @@ BROWSERS=$(dialog --checklist "Wähle Browser zur Installation:" 15 60 5 \
 5 "Google Chrome" off 3>&1 1>&2 2>&3)
 
 clear
-echo "Installiere ausgewählte Browser ..."
+echo "🌐 Installiere ausgewählte Browser ..."
 
 for choice in $BROWSERS; do
   case $choice in
@@ -60,25 +60,87 @@ for choice in $BROWSERS; do
        echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
        sudo apt update && sudo apt install -y brave-browser ;;
     3) sudo apt install -y chromium ;;
-    4) echo "Zen-Browser installieren ..."; \
-       wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb ;;
-    5) echo "Google Chrome installieren ..."; \
-       wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb ;;
+    4) wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb ;;
+    5) wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb ;;
+  esac
+done
+
+# ── Extra Tools Auswahl
+EXTRAS=$(dialog --checklist "Wähle zusätzliche Tools zur Installation:" 20 70 8 \
+1 "OBS Studio (Screen Recording)" off \
+2 "VSCodium (Code Editor)" off \
+3 "GIMP (Image Editing)" off \
+4 "Audacity (Audio Editing)" off \
+5 "Blender (3D / Video)" off \
+6 "Steam (Gaming)" off \
+7 "Lutris (Gaming Manager)" off \
+8 "VirtualBox (VMs)" off 3>&1 1>&2 2>&3)
+
+clear
+echo "🧩 Installiere ausgewählte Zusatztools ..."
+
+for choice in $EXTRAS; do
+  case $choice in
+    1) sudo apt install -y obs-studio ;;
+    2) sudo apt install -y apt-transport-https curl gpg; \
+       curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | sudo gpg --dearmor -o /usr/share/keyrings/vscodium.gpg; \
+       echo "deb [signed-by=/usr/share/keyrings/vscodium.gpg] https://download.vscodium.com/debs vscodium main" | sudo tee /etc/apt/sources.list.d/vscodium.list; \
+       sudo apt update && sudo apt install -y codium ;;
+    3) sudo apt install -y gimp ;;
+    4) sudo apt install -y audacity ;;
+    5) sudo apt install -y blender ;;
+    6) sudo apt install -y steam ;;
+    7) sudo apt install -y lutris ;;
+    8) sudo apt install -y virtualbox ;;
   esac
 done
 
 # ── Base Packages
-sudo apt install -y xorg xinit picom alacritty fish nano htop tmux fastfetch git feh \
+sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh \
   pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools \
   libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
 
+# ── Stylische Nerd Font Installation mit ASCII Fortschrittsbalken
+sudo apt install -y unzip >/dev/null
 
-# ── JetBrainsMono Nerd Font
-mkdir -p ~/.local/share/fonts
-wget -q https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip -O /tmp/JetBrainsMono.zip
-unzip -o /tmp/JetBrainsMono.zip -d ~/.local/share/fonts >/dev/null
+FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
+FONT_DIR="$HOME/.local/share/fonts"
+ZIP_PATH="/tmp/JetBrainsMono.zip"
+
+mkdir -p "$FONT_DIR"
+
+animate_bar() {
+  local duration=$1
+  local step=0
+  local width=40
+  while [ $step -le $duration ]; do
+    local progress=$((step * 100 / duration))
+    local filled=$((progress * width / 100))
+    local empty=$((width - filled))
+    printf "\r["
+    for ((i=0;i<filled;i++)); do printf "▰"; done
+    for ((i=0;i<empty;i++)); do printf "▱"; done
+    printf "] %d%%" "$progress"
+    sleep 0.05
+    step=$((step+1))
+  done
+  echo
+}
+
+echo "🧩 Installing JetBrainsMono Nerd Font..."
+echo "📥 Downloading..."
+wget -q "$FONT_URL" -O "$ZIP_PATH" &
+pid=$!
+while ps -p $pid >/dev/null 2>&1; do
+  animate_bar 20
+done
+echo
+echo "📦 Extracting Nerd Font..."
+animate_bar 15
+unzip -o "$ZIP_PATH" -d "$FONT_DIR" >/dev/null
 fc-cache -fv >/dev/null
-echo "🧩 Nerd Font installiert (JetBrainsMono)"
+echo "✅ JetBrainsMono Nerd Font installed successfully!"
+sleep 1
 
 # ── ZRAM aktivieren
 sudo sed -i 's/^#\?ALGO=.*/ALGO=zstd/' /etc/default/zramswap
@@ -102,14 +164,12 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# ── Picom config (transparency)
+# ── Picom config
 cat > ~/.config/dwm/picom.conf <<'EOF'
 backend = "glx";
 vsync = true;
 corner-radius = 12;
-opacity-rule = [
-  "90:class_g = 'Alacritty'"
-];
+opacity-rule = [ "90:class_g = 'Alacritty'" ];
 shadow = true;
 fading = true;
 EOF
@@ -129,14 +189,11 @@ colors:
   primary:
     background: "0x0f111a"
     foreground: "0xc5c8c6"
-  cursor:
-    text: "0x000000"
-    cursor: "0xffffff"
 shell:
   program: /usr/bin/fish
 EOF
 
-# ── Fish Shell default
+# ── Fish default shell
 chsh -s /usr/bin/fish
 
 # ── Total System Uptime Tracker
@@ -156,14 +213,12 @@ function fish_greeting
     echo "🧠  Host:" (hostname)
     echo "⚙️  Kernel:" (uname -r)
     echo "⏱️  Current uptime:" (uptime -p | sed 's/up //')
-
     set uptime_seconds (awk '{print int($1)}' /proc/uptime)
     set saved_total (cat /var/lib/system-uptime.db ^/dev/null 2>/dev/null; or echo 0)
     set new_total (math "$uptime_seconds + $saved_total")
     echo $new_total | sudo tee /var/lib/system-uptime.db >/dev/null
     set total_days (math "scale=2; $new_total / 86400")
     echo "🕓  Total system uptime:" $total_days "days"
-
     echo "📦  Packages:" (dpkg -l | grep '^ii' | wc -l)" (apt)"
     echo "💻  Shell:" (fish --version | awk '{print $3}')
     echo "🧩  WM: dwm"
@@ -187,20 +242,11 @@ EOF
 # ── Build DWM + Tools lokal unter ~/.config/dwm
 mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
 cd ~/.config/dwm/src
+git clone https://git.suckless.org/dwm && cd dwm && make && cp dwm ~/.config/dwm/bin && cd ..
+git clone https://git.suckless.org/dmenu && cd dmenu && make && cp dmenu ~/.config/dwm/bin && cd ..
+git clone https://git.suckless.org/slstatus && cd slstatus && make && cp slstatus ~/.config/dwm/bin && cd ..
 
-# DWM
-git clone https://git.suckless.org/dwm
-cd dwm && make && cp dwm ~/.config/dwm/bin && cd ..
-
-# dmenu
-git clone https://git.suckless.org/dmenu
-cd dmenu && make && cp dmenu ~/.config/dwm/bin && cd ..
-
-# slstatus
-git clone https://git.suckless.org/slstatus
-cd slstatus && make && cp slstatus ~/.config/dwm/bin && cd ..
-
-# PATH für lokale Binaries
+# ── PATH persistieren
 echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
 echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 
@@ -208,6 +254,6 @@ echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 echo
 echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
-echo "🧠 Super + Return = Alacritty (mit System-Dashboard)"
-echo "🎨 DWM & Tools lokal unter ~/.config/dwm/bin gespeichert."
-echo "💾 ZRAM, PipeWire, Fish, Fastfetch aktiv."
+echo "🧠 Super + Return = Alacritty (System-Dashboard)"
+echo "🎨 DWM & Tools: ~/.config/dwm/bin"
+echo "💾 ZRAM, PipeWire, Fish & Fastfetch aktiv."
