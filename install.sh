@@ -26,7 +26,7 @@ echo -e "\n${YELLOW}→ Installiere Systembasis...${RESET}"
 sudo apt update
 sudo apt install -y build-essential git curl wget feh xorg xinit linux-headers-$(uname -r) \
   libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev \
-  pipewire pipewire-pulse wireplumber fish neofetch zram-tools
+  pipewire pipewire-pulse wireplumber fish fastfetch zram-tools
 
 # ────────────────────────────────────────────────
 # 2. Zen-Kernel
