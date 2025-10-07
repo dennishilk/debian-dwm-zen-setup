@@ -18,7 +18,7 @@ if [ "$ID" != "debian" ] || [[ "$VERSION_ID" != "13" && "$VERSION_CODENAME" != "
 fi
 echo "✅ Debian 13 erkannt – Installation startet ..."
 
-sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc
+sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc make gcc
 
 # ── Zen-Kernel
 if dialog --yesno "Zen-Kernel installieren?" 8 40; then
@@ -68,12 +68,10 @@ for choice in $BROWSERS; do
 done
 
 # ── Base Packages
-sudo apt install -y xorg xinit dwm dmenu picom alacritty \
-  fish htop tmux fastfetch git build-essential feh \
-  pipewire wireplumber pipewire-audio pipewire-pulse \
-  timeshift zram-tools
+sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh \
+  pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools
 
-# ── JetBrainsMono Nerd Font (manuell)
+# ── JetBrainsMono Nerd Font
 mkdir -p ~/.local/share/fonts
 wget -q https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip -O /tmp/JetBrainsMono.zip
 unzip -o /tmp/JetBrainsMono.zip -d ~/.local/share/fonts >/dev/null
@@ -81,19 +79,20 @@ fc-cache -fv >/dev/null
 echo "🧩 Nerd Font installiert (JetBrainsMono)"
 
 # ── ZRAM aktivieren
-sudo systemctl enable --now zramswap.service
 sudo sed -i 's/^#\?ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#\?PERCENT=.*/PERCENT=50/' /etc/default/zramswap
+sudo systemctl enable --now zramswap.service
 
-# ── Wallpaper & Config
+# ── Wallpaper
 mkdir -p ~/.config/dwm
 if [ -f "./wallpaper.png" ]; then
   cp ./wallpaper.png ~/.config/dwm/
 fi
 
-# ── .xinitrc → Autostart DWM
+# ── .xinitrc → Autostart DWM (lokal)
 cat > ~/.xinitrc <<'EOF'
 #!/bin/bash
+export PATH="$HOME/.config/dwm/bin:$PATH"
 xrandr --output "$(xrandr | awk '/ connected/{print $1;exit}')" --auto
 feh --bg-fill ~/.config/dwm/wallpaper.png &
 picom --config ~/.config/dwm/picom.conf &
@@ -102,7 +101,6 @@ EOF
 chmod +x ~/.xinitrc
 
 # ── Picom config (transparency)
-mkdir -p ~/.config/dwm
 cat > ~/.config/dwm/picom.conf <<'EOF'
 backend = "glx";
 vsync = true;
@@ -145,7 +143,7 @@ if [ ! -f /var/lib/system-uptime.db ]; then
   echo "0" | sudo tee /var/lib/system-uptime.db >/dev/null
 fi
 
-# ── Fish Config (Nerd Dashboard)
+# ── Fish Config (Dashboard)
 mkdir -p ~/.config/fish
 cat > ~/.config/fish/config.fish <<'EOF'
 function fish_greeting
@@ -184,16 +182,30 @@ function fish_greeting
 end
 EOF
 
-# ── DWM + slstatus Build
-sudo rm -rf /usr/local/src/dwm
-sudo git clone https://git.suckless.org/dwm /usr/local/src/dwm
-cd /usr/local/src/dwm && sudo make clean install
-sudo git clone https://git.suckless.org/slstatus /usr/local/src/slstatus
-cd /usr/local/src/slstatus && sudo make clean install
+# ── Build DWM + Tools lokal unter ~/.config/dwm
+mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
+cd ~/.config/dwm/src
+
+# DWM
+git clone https://git.suckless.org/dwm
+cd dwm && make && cp dwm ~/.config/dwm/bin && cd ..
+
+# dmenu
+git clone https://git.suckless.org/dmenu
+cd dmenu && make && cp dmenu ~/.config/dwm/bin && cd ..
+
+# slstatus
+git clone https://git.suckless.org/slstatus
+cd slstatus && make && cp slstatus ~/.config/dwm/bin && cd ..
+
+# PATH für lokale Binaries
+echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
+echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 
 # ── Done
 echo
 echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
 echo "🧠 Super + Return = Alacritty (mit System-Dashboard)"
-echo "🎨 Wallpaper, Transparenz, PipeWire, Fish & ZRAM aktiv."
+echo "🎨 DWM & Tools lokal unter ~/.config/dwm/bin gespeichert."
+echo "💾 ZRAM, PipeWire, Fish, Fastfetch aktiv."
