@@ -1,17 +1,26 @@
 #!/usr/bin/env bash
 # ────────────────────────────────────────────────
 # Debian 13 DWM Ultimate Setup by Dennis Hilk
-# Clean, menu-driven installer (Fish autostart)
+# Final version – Zen check, Fish autostart, GPU, Chrome, Wallpaper
 # ────────────────────────────────────────────────
 
 set -e
 
+# ── Root check
 if [[ $EUID -ne 0 ]]; then
   echo "Bitte mit sudo oder als root ausführen."
   exit 1
 fi
 
+# ── Ensure 'dialog' exists
+if ! command -v dialog &>/dev/null; then
+  echo "→ Installiere fehlendes Paket: dialog"
+  apt update -y && apt install -y dialog
+fi
+
 GREEN="\e[32m"; RED="\e[31m"; YELLOW="\e[33m"; RESET="\e[0m"
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+USER_HOME="/home/$SUDO_USER"
 
 clear
 echo -e "${GREEN}──────────────────────────────────────────────"
@@ -25,12 +34,10 @@ CHOICE=$(dialog --clear --stdout --title "DWM Setup Menü" \
   2 "Fish Shell + Systeminfos" \
   3 "GPU-Treiber automatisch erkennen" \
   4 "Google Chrome installieren" \
-  5 "DWM + Tools installieren" \
-  6 "Wallpaper aktivieren" \
-  7 "Zen Kernel installieren" \
-  8 "Autostart für DWM in Fish aktivieren" \
-  9 "Neustart" \
-  10 "Beenden")
+  5 "DWM + Tools installieren (mit Wallpaper)" \
+  6 "Zen Kernel installieren / prüfen" \
+  7 "Neustart" \
+  8 "Beenden")
 
 clear
 case $CHOICE in
@@ -46,10 +53,9 @@ case $CHOICE in
   echo -e "${YELLOW}→ Installiere Fish Shell...${RESET}"
   apt install -y fish fastfetch
   chsh -s /usr/bin/fish "$SUDO_USER"
-  mkdir -p /home/$SUDO_USER/.config/fish
-  cat <<'EOF' > /home/$SUDO_USER/.config/fish/config.fish
+  mkdir -p "$USER_HOME/.config/fish"
+  cat <<'EOF' > "$USER_HOME/.config/fish/config.fish"
 # ────────────────────────────────────────────────
-# Fish Config mit Systeminfo
 fastfetch
 echo ""
 set_color cyan
@@ -59,18 +65,18 @@ echo "Uptime:" (uptime -p)
 set_color yellow
 echo "System gestartet seit:" (who -b | awk '{print $3,$4}')
 set_color normal
-# ────────────────────────────────────────────────
+
 # DWM Autostart (nur auf TTY1)
 if test -z "$DISPLAY"
     and test (tty) = "/dev/tty1"
     echo ""
-    echo "Starte automatisch DWM..."
-    sleep 1
+    echo "🐧 Willkommen Dennis — DWM startet in 2 Sekunden..."
+    sleep 2
     exec startx
 end
 # ────────────────────────────────────────────────
 EOF
-  chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/fish
+  chown -R $SUDO_USER:$SUDO_USER "$USER_HOME/.config/fish"
   echo -e "${GREEN}✔ Fish Shell mit Autostart eingerichtet.${RESET}"
   read -rp "Weiter mit Enter..."
   ;;
@@ -108,70 +114,78 @@ EOF
 5)
   echo -e "${YELLOW}→ Installiere DWM und Tools...${RESET}"
   apt install -y build-essential libx11-dev libxft-dev libxinerama-dev feh xinit alacritty git curl unzip
-
-  mkdir -p /home/$SUDO_USER/.config/dwm
-  cd /home/$SUDO_USER/.config/dwm
+  mkdir -p "$USER_HOME/.config/dwm"
+  cd "$USER_HOME/.config/dwm"
 
   git clone https://git.suckless.org/dwm
   cd dwm
   make clean install
   cd ..
 
-  echo 'exec dwm' > /home/$SUDO_USER/.xinitrc
-  chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/dwm /home/$SUDO_USER/.xinitrc
-  echo -e "${GREEN}✔ DWM installiert.${RESET}"
+  echo 'exec dwm' > "$USER_HOME/.xinitrc"
+
+  # ── Wallpaper automatisch aktivieren
+  WALLPAPER_SRC="$SCRIPT_DIR/wallpaper.png"
+  WALLPAPER_DST="$USER_HOME/.config/dwm/wallpaper.png"
+  mkdir -p "$USER_HOME/.config/dwm"
+
+  if [[ -f "$WALLPAPER_SRC" ]]; then
+    cp "$WALLPAPER_SRC" "$WALLPAPER_DST"
+    chown $SUDO_USER:$SUDO_USER "$WALLPAPER_DST"
+    echo "feh --bg-scale $WALLPAPER_DST" > "$USER_HOME/.fehbg"
+    chmod +x "$USER_HOME/.fehbg"
+    if ! grep -q ".fehbg" "$USER_HOME/.xinitrc"; then
+      echo "~/.fehbg &" >> "$USER_HOME/.xinitrc"
+    fi
+    echo -e "${GREEN}✔ Wallpaper automatisch kopiert und aktiviert.${RESET}"
+  else
+    echo -e "${RED}⚠️  Kein wallpaper.png im Skriptordner gefunden (${SCRIPT_DIR})${RESET}"
+  fi
+
+  chown -R $SUDO_USER:$SUDO_USER "$USER_HOME/.config/dwm" "$USER_HOME/.xinitrc"
+  echo -e "${GREEN}✔ DWM vollständig installiert.${RESET}"
   read -rp "Weiter mit Enter..."
   ;;
 # ────────────────────────────────────────────────
 6)
-  echo -e "${YELLOW}→ Wallpaper aktivieren...${RESET}"
-  WALLPAPER="/home/$SUDO_USER/.config/dwm/wallpaper.png"
-  if [[ -f "$WALLPAPER" ]]; then
-    echo "feh --bg-scale $WALLPAPER" > /home/$SUDO_USER/.fehbg
-    chmod +x /home/$SUDO_USER/.fehbg
-    if ! grep -q ".fehbg" /home/$SUDO_USER/.xinitrc; then
-      echo "~/.fehbg &" >> /home/$SUDO_USER/.xinitrc
-    fi
-    echo -e "${GREEN}✔ Wallpaper hinzugefügt.${RESET}"
+  echo -e "${YELLOW}→ Prüfe Zen Kernel...${RESET}"
+  if uname -r | grep -q "zen"; then
+    echo -e "${GREEN}✔ Zen Kernel ist bereits aktiv: $(uname -r)${RESET}"
+  elif dpkg -l | grep -q linux-image-zen; then
+    echo -e "${GREEN}✔ Zen Kernel ist bereits installiert, aber nicht aktiv.${RESET}"
+    echo -e "${YELLOW}→ Bitte Neustart durchführen, um Zen Kernel zu laden.${RESET}"
   else
-    echo -e "${RED}Kein wallpaper.png gefunden! Bitte in ~/.config/dwm legen.${RESET}"
+    echo -e "${YELLOW}→ Zen Kernel wird installiert...${RESET}"
+    apt update
+    if ! apt install -y linux-image-zen linux-headers-zen; then
+      echo -e "${RED}Zen Kernel nicht in Stable gefunden.${RESET}"
+      echo -e "${YELLOW}→ Füge temporär Debian Sid hinzu...${RESET}"
+      echo "deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/zen-temp.list
+      apt update -y || true
+      if apt install -y linux-image-amd64 linux-headers-amd64; then
+        echo -e "${GREEN}✔ Standard-Kernel aktualisiert (Fallback).${RESET}"
+      else
+        apt install -y linux-image-cloud-amd64 || echo -e "${RED}Kein alternativer Kernel gefunden.${RESET}"
+      fi
+      rm -f /etc/apt/sources.list.d/zen-temp.list
+      apt update -y
+    fi
+    echo -e "${GREEN}✔ Kernel-Installation abgeschlossen.${RESET}"
+    echo -e "${YELLOW}Bitte neu starten, um neuen Kernel zu aktivieren.${RESET}"
   fi
   read -rp "Weiter mit Enter..."
   ;;
 # ────────────────────────────────────────────────
 7)
-  echo -e "${YELLOW}→ Installiere Zen Kernel...${RESET}"
-  apt install -y linux-image-zen linux-headers-zen || {
-    echo -e "${RED}Zen Kernel nicht in Repo gefunden. Füge Sid Repo hinzu...${RESET}"
-    echo "deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/sid.list
-    apt update
-    apt install -y linux-image-zen linux-headers-zen
-  }
-  echo -e "${GREEN}✔ Zen Kernel installiert.${RESET}"
-  echo -e "${YELLOW}Bitte nach Installation neu starten, um Zen Kernel zu nutzen.${RESET}"
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-8)
-  echo -e "${YELLOW}→ Prüfe Fish-Autostart-Konfiguration...${RESET}"
-  if grep -q "exec startx" /home/$SUDO_USER/.config/fish/config.fish; then
-    echo -e "${GREEN}✔ Fish-Autostart ist bereits aktiv.${RESET}"
-  else
-    echo -e "${RED}Fish wurde noch nicht konfiguriert. Bitte Menüpunkt 2 zuerst ausführen.${RESET}"
-  fi
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-9)
   echo -e "${YELLOW}→ Starte System neu...${RESET}"
   sleep 2
   reboot
   ;;
 # ────────────────────────────────────────────────
-10)
+8)
   clear
   echo -e "${GREEN}Installation abgeschlossen!${RESET}"
-  echo -e "${YELLOW}Nach dem Login auf TTY1 startet DWM automatisch über Fish.${RESET}"
+  echo -e "${YELLOW}Nach Login auf TTY1 startet DWM automatisch über Fish.${RESET}"
   exit 0
   ;;
 esac
