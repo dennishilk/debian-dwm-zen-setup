@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "🐧 Debian 13 DWM Ultimate v7.3.3 – by Dennis Hilk"
+echo "🐧 Debian 13 DWM Ultimate v7.3.4 – by Dennis Hilk"
 sleep 1
 
 # ───────────────────────────────────────────────
@@ -54,9 +54,9 @@ for B in $BROWSERS; do
     1) sudo apt install -y firefox-esr;;
     2) wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb && sudo apt install -y /tmp/chrome.deb;;
     3) sudo apt install -y apt-transport-https curl; \
-   curl -fsS https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg | sudo tee /usr/share/keyrings/brave-browser-archive-keyring.gpg >/dev/null; \
-   echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
-   sudo apt update && sudo apt install -y brave-browser;;
+       curl -fsS https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg | sudo tee /usr/share/keyrings/brave-browser-archive-keyring.gpg >/dev/null; \
+       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
+       sudo apt update && sudo apt install -y brave-browser;;
     4) sudo apt install -y ungoogled-chromium;;
   esac
 done
@@ -70,7 +70,7 @@ zram-tools pipewire pipewire-audio pipewire-pulse wireplumber tlp lm-sensors feh
 chsh -s /usr/bin/fish
 
 # ───────────────────────────────────────────────
-# 4️⃣ DWM + Dmenu + Slstatus (lokal, kein Netzstatus)
+# 4️⃣ DWM + Dmenu (ohne slstatus, lokal)
 # ───────────────────────────────────────────────
 BASE_DIR="$HOME/.config/dwm/src"
 PREFIX_DIR="$HOME/.config/dwm"
@@ -78,12 +78,12 @@ BIN_DIR="$PREFIX_DIR/bin"
 mkdir -p "$BASE_DIR" "$BIN_DIR"
 cd "$BASE_DIR"
 
-for r in dwm dmenu slstatus; do
+for r in dwm dmenu; do
   [ -d "$r" ] || git clone "https://git.suckless.org/$r"
   cd "$r"; git reset --hard HEAD >/dev/null || true; cd "$BASE_DIR"
 done
 
-for r in dwm dmenu slstatus; do
+for r in dwm dmenu; do
   sed -i "s|^PREFIX =.*|PREFIX =\$(HOME)/.config/dwm|" "$BASE_DIR/$r/config.mk"
 done
 
@@ -91,28 +91,8 @@ done
 sed -i 's/Mod1Mask/Mod4Mask/g' "$BASE_DIR/dwm/config.def.h" || true
 sed -i 's|"st", NULL|"alacritty", NULL|' "$BASE_DIR/dwm/config.def.h" || true
 
-# Slstatus (ohne Netz)
-cat > "$BASE_DIR/slstatus/config.def.h" <<'EOF'
-#include <stdio.h>
-#include <time.h>
-#include "slstatus.h"
-#include "util.h"
-static const unsigned int interval = 2;
-static const char unknown_str[] = "n/a";
-#define MAXLEN 2048
-static const struct arg args[] = {
-  { cpu_perc, "🧠 %3s%% ", NULL },
-  { cpu_freq, "⚙️ %3s GHz ", NULL },
-  { ram_perc, "💾 %2s%% ", NULL },
-  { temp, "🌡️ %2s °C ", "/sys/class/thermal/thermal_zone0/temp" },
-  { uptime, "⏱️ %s ", NULL },
-  { datetime, "📅 %s", "%H:%M | %d.%m.%Y" },
-};
-EOF
-
 make -C "$BASE_DIR/dwm" clean install
 make -C "$BASE_DIR/dmenu" clean install
-make -C "$BASE_DIR/slstatus" clean install
 
 grep -qxF 'export PATH="$HOME/.config/dwm/bin:$PATH"' ~/.bashrc || echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
 echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' >> ~/.config/fish/config.fish 2>/dev/null || true
@@ -188,9 +168,9 @@ end
 EOF
 
 clear
-echo "✅ DWM Ultimate v7.3.3 fertig!"
-echo "🎯 Kein Netzwerkstatus in slstatus – fehlerfrei & leicht"
+echo "✅ DWM Ultimate v7.3.4 fertig – ohne slstatus!"
+echo "🎯 Kein netspeed, kein battery, kein ld-Fehler"
 echo "🚀 Automatischer Start auf TTY1 (Fish + Bash)"
-echo "🎹 Hotkeys aktiv, Power-Menü, Volume-OSD, System-Info"
+echo "🎹 Hotkeys, Power-Menü, Volume-OSD, System-Info"
 echo "💾 Installationspfad: ~/.config/dwm/bin"
 echo "🔁 Reboot empfohlen → sudo reboot"
