@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-echo "🎨 Optisches Feintuning + Tastaturlayout Fix (v6.8) ..."
+echo "🎨  Optisches Feintuning v6.9 mit stabilem slstatus + deutschem Layout ..."
 
 # ── GTK, Icons, Cursor
 sudo apt install -y arc-theme papirus-icon-theme bibata-cursor-theme fonts-noto-color-emoji
@@ -8,7 +8,7 @@ gsettings set org.gnome.desktop.interface gtk-theme 'Arc-Dark' 2>/dev/null || tr
 gsettings set org.gnome.desktop.interface icon-theme 'Papirus-Dark' 2>/dev/null || true
 gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' 2>/dev/null || true
 
-# ── Picom Config (Transparenz + Blur)
+# ── Picom (Transparenz + Blur)
 mkdir -p ~/.config/dwm ~/.config/picom
 cat > ~/.config/dwm/picom.conf <<'EOF'
 backend = "glx";
@@ -17,8 +17,6 @@ corner-radius = 10;
 shadow = true;
 shadow-radius = 12;
 shadow-opacity = 0.4;
-shadow-offset-x = -10;
-shadow-offset-y = -10;
 inactive-opacity = 0.9;
 active-opacity = 1.0;
 opacity-rule = [ "90:class_g = 'Alacritty'" ];
@@ -29,7 +27,7 @@ fade-in-step = 0.03;
 fade-out-step = 0.03;
 EOF
 
-# ── Alacritty Config
+# ── Alacritty
 mkdir -p ~/.config/alacritty
 cat > ~/.config/alacritty/alacritty.yml <<'EOF'
 window:
@@ -85,10 +83,10 @@ configuration {
 }
 EOF
 
-# ── slstatus mit Netz-Auto-Detection
+# ── slstatus (stabiler netspeed-Fix)
 cd ~/.config/dwm/src/slstatus || exit 1
 cat > config.def.h <<'EOF'
-/* slstatus config by Dennis Hilk - Debian 13 DWM Ultimate v6.8 */
+/* slstatus config by Dennis Hilk - Debian 13 DWM Ultimate v6.9 */
 #include <stdio.h>
 #include <time.h>
 #include "slstatus.h"
@@ -98,15 +96,16 @@ static const unsigned int interval = 2;
 static const char unknown_str[] = "n/a";
 #define MAXLEN 2048
 
-#define NET_CMD "ip route | awk '/default/ {print $5}' | head -n1"
+/* Netzwerk-Interface hier anpassen (z. B. enp3s0 oder wlan0) */
+static const char *netiface = "enp3s0";
 
 static const struct arg args[] = {
     { cpu_perc,    "🧠 %3s%% ",      NULL },
     { cpu_freq,    "⚙️ %3sGHz ",     NULL },
     { ram_perc,    "💾 %2s%% ",      NULL },
     { temp,        "🌡️ %2s°C ",      "/sys/class/thermal/thermal_zone0/temp" },
-    { run_command, "⬇ %s ",          "IF=$( " NET_CMD " ); RX1=$(cat /sys/class/net/$IF/statistics/rx_bytes 2>/dev/null); sleep 1; RX2=$(cat /sys/class/net/$IF/statistics/rx_bytes 2>/dev/null); echo $(((RX2-RX1)/1024))KB/s" },
-    { run_command, "⬆ %s ",          "IF=$( " NET_CMD " ); TX1=$(cat /sys/class/net/$IF/statistics/tx_bytes 2>/dev/null); sleep 1; TX2=$(cat /sys/class/net/$IF/statistics/tx_bytes 2>/dev/null); echo $(((TX2-TX1)/1024))KB/s" },
+    { netspeed_rx, "⬇ %s ",          netiface },
+    { netspeed_tx, "⬆ %s ",          netiface },
     { vol_perc,    "🔊 %s%% ",       "default" },
     { uptime,      "⏱️ %s ",         NULL },
     { datetime,    "📅 %s",          "%H:%M | %d.%m.%Y" },
@@ -132,7 +131,7 @@ if ! grep -q "autostart.sh" ~/.xinitrc; then
   sed -i '/feh --bg-fill/a bash ~/.config/dwm/autostart.sh &' ~/.xinitrc
 fi
 
-# ── Tastaturlayout Fix (deutsch dauerhaft)
+# ── Tastaturlayout dauerhaft Deutsch
 echo "⌨️  Fixiere deutsches Tastaturlayout ..."
 sudo tee /etc/default/keyboard >/dev/null <<'EOF'
 XKBLAYOUT="de"
@@ -142,21 +141,18 @@ EOF
 sudo dpkg-reconfigure -f noninteractive keyboard-configuration
 sudo localectl set-x11-keymap de nodeadkeys
 
-# .xinitrc absichern
 if ! grep -q "setxkbmap de nodeadkeys" ~/.xinitrc; then
   sed -i '/^setxkbmap/d' ~/.xinitrc 2>/dev/null || true
   sed -i '/xrandr --output/i setxkbmap de nodeadkeys &' ~/.xinitrc
 fi
-
-# Fish-Sessions absichern
 if ! grep -q "setxkbmap de nodeadkeys" ~/.config/fish/config.fish; then
   echo "setxkbmap de nodeadkeys" >> ~/.config/fish/config.fish
 fi
 
 echo
-echo "✅ Optisches Feintuning v6.8 abgeschlossen!"
-echo "🎨 Dark Theme aktiv (Arc-Dark + Papirus-Dark + Bibata Cursor)"
-echo "🌫️ Picom Blur & Alacritty Transparenz gesetzt"
-echo "🧠 slstatus mit Auto-Netz & Layout-Fix kompiliert"
-echo "⌨️  Tastaturlayout dauerhaft: Deutsch (nodeadkeys)"
-echo "🔔 Dunst & Rofi starten automatisch"
+echo "✅  Optisches Feintuning v6.9 abgeschlossen!"
+echo "🎨  Arc-Dark + Papirus + Bibata aktiv"
+echo "🌫️  Picom Blur & Alacritty Transparenz konfiguriert"
+echo "🧠  slstatus ohne netspeed-Fehler kompiliert"
+echo "⌨️  Tastaturlayout dauerhaft Deutsch (nodeadkeys)"
+echo "🔔  Dunst & Rofi starten automatisch"
