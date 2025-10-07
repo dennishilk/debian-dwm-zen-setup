@@ -2,7 +2,7 @@
 set -e
 
 # ────────────────────────────────
-# Debian 13 DWM Ultimate v6.1 Setup
+# Debian 13 DWM Ultimate v6.2 Setup
 # By Dennis Hilk
 # ────────────────────────────────
 
@@ -15,7 +15,7 @@ while [[ $# -gt 0 ]]; do
         --export-packages) EXPORT_PACKAGES=true; shift ;;
         --help)
             echo "Usage: $0 [OPTIONS]"
-            echo "  --only-config      Only copy config files (skip packages and kernel)"
+            echo "  --only-config      Only copy or auto-download configs (skip kernel)"
             echo "  --export-packages  Export package list and exit"
             echo "  --help             Show this help message"
             exit 0
@@ -41,11 +41,11 @@ msg() { echo -e "${CYAN}$*${NC}"; }
 clear
 echo -e "${CYAN}"
 echo "──────────────────────────────"
-echo " Debian 13 DWM Ultimate Setup "
+echo " Debian 13 DWM Ultimate v6.2  "
 echo "──────────────────────────────"
 echo -e "${NC}\n"
 
-read -p "Proceed with full installation (Zen Kernel + ZRAM + GPU + Chrome)? (y/n) " -n 1 -r
+read -p "Proceed with full installation (Zen Kernel + ZRAM + GPU + Chrome + auto-DWM)? (y/n) " -n 1 -r
 echo
 [[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
 
@@ -97,16 +97,16 @@ if [ "$ONLY_CONFIG" = false ]; then
     GPU=$(lspci | grep -E "VGA|3D" | tr '[:upper:]' '[:lower:]')
 
     if echo "$GPU" | grep -q "nvidia"; then
-        msg "Detected NVIDIA GPU. Installing drivers..."
+        msg "Detected NVIDIA GPU → installing drivers..."
         sudo apt-get install -y nvidia-driver nvidia-settings
         sudo systemctl enable nvidia-persistenced || true
 
     elif echo "$GPU" | grep -q "amd"; then
-        msg "Detected AMD GPU. Installing Mesa/AMDGPU drivers..."
+        msg "Detected AMD GPU → installing Mesa/AMDGPU drivers..."
         sudo apt-get install -y firmware-amd-graphics mesa-vulkan-drivers xserver-xorg-video-amdgpu
 
     elif echo "$GPU" | grep -q "intel"; then
-        msg "Detected Intel GPU. Installing Intel drivers..."
+        msg "Detected Intel GPU → installing Intel drivers..."
         sudo apt-get install -y firmware-misc-nonfree intel-media-va-driver-non-free i965-va-driver mesa-vulkan-drivers
 
     else
@@ -137,31 +137,40 @@ EOF
     sudo systemctl start zramswap
 fi
 
-# ─── DWM Config Copy ─────────────────────────────────────────────────────
-msg "Setting up DWM configuration..."
+# ─── DWM/ST Auto-Fetch & Build ──────────────────────────────────────────
+msg "Preparing DWM configuration..."
 mkdir -p "$CONFIG_DIR"
 
+# Prefer local configs, otherwise auto-clone
 if [ -d "$SCRIPT_DIR/suckless" ]; then
-    msg "Found 'suckless' directory, copying from there..."
-    cp -r "$SCRIPT_DIR/suckless/"* "$CONFIG_DIR"/ || die "Failed to copy configs from suckless/"
+    msg "Found 'suckless/' directory → copying configs..."
+    cp -r "$SCRIPT_DIR/suckless/"* "$CONFIG_DIR"/
 else
-    msg "No 'suckless' directory found, copying configs directly from script folder..."
+    found_local=false
     for dir in dwm st slstatus; do
         if [ -d "$SCRIPT_DIR/$dir" ]; then
-            cp -r "$SCRIPT_DIR/$dir" "$CONFIG_DIR"/ || die "Failed to copy $dir"
+            msg "Found local $dir folder → copying..."
+            cp -r "$SCRIPT_DIR/$dir" "$CONFIG_DIR/"
+            found_local=true
         fi
     done
+
+    if [ "$found_local" = false ]; then
+        msg "No local configs found → cloning official suckless sources..."
+        git clone https://git.suckless.org/dwm "$CONFIG_DIR/dwm"
+        git clone https://git.suckless.org/st "$CONFIG_DIR/st"
+    fi
 fi
 
-if [ ! -d "$CONFIG_DIR/dwm" ]; then
-    die "No dwm configuration found. Make sure the 'dwm' folder is in the same directory as this script."
-fi
-
-# ─── Build suckless tools ────────────────────────────────────────────────
-msg "Building DWM and ST..."
+# Build all available suckless components
+msg "Building DWM & ST..."
 for tool in dwm st; do
-    cd "$CONFIG_DIR/$tool" || die "Cannot find $tool"
-    make && sudo make clean install || die "Failed to build $tool"
+    if [ -d "$CONFIG_DIR/$tool" ]; then
+        cd "$CONFIG_DIR/$tool"
+        make && sudo make clean install || die "Failed to build $tool"
+    else
+        msg "Skipping missing $tool folder..."
+    fi
 done
 
 # ─── Desktop Entries ─────────────────────────────────────────────────────
@@ -198,5 +207,5 @@ fi
 
 # ─── Done ───────────────────────────────────────────────────────────────
 echo -e "\n${GREEN}✅ Installation complete!${NC}"
-echo "Zen Kernel, ZRAM, GPU drivers, and Chrome are installed."
+echo "Zen Kernel, ZRAM, GPU drivers, Chrome, and DWM/ST are ready."
 echo "Reboot now to start DWM on Debian 13."
