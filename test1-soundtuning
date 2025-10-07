@@ -1,0 +1,72 @@
+#!/usr/bin/env bash
+set -e
+echo "🎧 Starte Audio-Feintuning …"
+
+# ── PipeWire + Tools
+sudo apt install -y pipewire pipewire-audio pipewire-pulse wireplumber \
+pavucontrol pwvucontrol easyeffects rtkit
+
+# ── Dienste aktivieren
+systemctl --user enable --now pipewire pipewire-pulse wireplumber
+
+# ── Low Latency Kernel Params (für SPDIF / Pro-Audio)
+if ! grep -q "fs.inotify.max_user_watches" /etc/sysctl.conf; then
+  echo "fs.inotify.max_user_watches=524288" | sudo tee -a /etc/sysctl.conf
+  echo "fs.inotify.max_user_instances=512" | sudo tee -a /etc/sysctl.conf
+fi
+sudo sysctl -p
+
+# ── WirePlumber Profile Defaults
+mkdir -p ~/.config/wireplumber/main.lua.d
+cat > ~/.config/wireplumber/main.lua.d/10-default-profile.lua <<'EOF'
+-- Always prefer Pro-Audio profile for SPDIF / HDMI
+rule = {
+  matches = {
+    {
+      { "device.name", "matches", "alsa_output.*" },
+    },
+  },
+  apply_properties = {
+    ["device.profile"] = "pro-audio",
+  },
+}
+table.insert(alsa_monitor.rules, rule)
+EOF
+
+# ── PipeWire config (Low latency)
+mkdir -p ~/.config/pipewire
+cat > ~/.config/pipewire/pipewire.conf.d/low-latency.conf <<'EOF'
+context.properties = {
+  default.clock.rate          = 48000
+  default.clock.quantum       = 64
+  default.clock.min-quantum   = 32
+  default.clock.max-quantum   = 128
+  default.clock.allowed-rates = [ 44100, 48000, 96000 ]
+  default.clock.quantum-limit = 8192
+}
+EOF
+
+# ── Realtime Policy fix
+sudo tee /etc/security/limits.d/audio.conf >/dev/null <<'EOF'
+@audio   -  rtprio     95
+@audio   -  memlock    unlimited
+@audio   -  nice      -19
+EOF
+sudo usermod -aG audio $USER
+
+# ── Optional autostart EasyEffects (GUI EQ)
+mkdir -p ~/.config/dwm/autostart
+if [ -x "$(command -v easyeffects)" ]; then
+  echo "easyeffects --gapplication-service &" >> ~/.config/dwm/autostart.sh
+fi
+
+# ── Hinweisdatei
+cat <<'MSG'
+✅ Audio-Feintuning abgeschlossen!
+──────────────────────────────────────────────
+🎛️  PipeWire + WirePlumber laufen im Low-Latency-Modus
+🎚️  Pavucontrol & Pwvucontrol zur Lautstärkeregelung
+🎧  EasyEffects optional als Equalizer aktivierbar
+⚙️  Systemdienst: systemctl --user status pipewire
+🧠  Echtzeit-Thread: Realtime-Priority 95
+MSG
