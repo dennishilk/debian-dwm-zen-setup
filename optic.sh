@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 set -e
-echo "🎨  Optisches Feintuning v6.9 mit stabilem slstatus + deutschem Layout ..."
+echo "🎨 Optisches Feintuning v6.10 (ohne Netzwerkinfos) ..."
 
 # ── GTK, Icons, Cursor
 sudo apt install -y arc-theme papirus-icon-theme bibata-cursor-theme fonts-noto-color-emoji
@@ -83,10 +83,10 @@ configuration {
 }
 EOF
 
-# ── slstatus (stabiler netspeed-Fix)
+# ── slstatus (ohne Netz-Module)
 cd ~/.config/dwm/src/slstatus || exit 1
 cat > config.def.h <<'EOF'
-/* slstatus config by Dennis Hilk - Debian 13 DWM Ultimate v6.9 */
+/* slstatus config by Dennis Hilk - Debian 13 DWM Ultimate v6.10 (no network) */
 #include <stdio.h>
 #include <time.h>
 #include "slstatus.h"
@@ -96,16 +96,11 @@ static const unsigned int interval = 2;
 static const char unknown_str[] = "n/a";
 #define MAXLEN 2048
 
-/* Netzwerk-Interface hier anpassen (z. B. enp3s0 oder wlan0) */
-static const char *netiface = "enp3s0";
-
 static const struct arg args[] = {
     { cpu_perc,    "🧠 %3s%% ",      NULL },
     { cpu_freq,    "⚙️ %3sGHz ",     NULL },
     { ram_perc,    "💾 %2s%% ",      NULL },
     { temp,        "🌡️ %2s°C ",      "/sys/class/thermal/thermal_zone0/temp" },
-    { netspeed_rx, "⬇ %s ",          netiface },
-    { netspeed_tx, "⬆ %s ",          netiface },
     { vol_perc,    "🔊 %s%% ",       "default" },
     { uptime,      "⏱️ %s ",         NULL },
     { datetime,    "📅 %s",          "%H:%M | %d.%m.%Y" },
@@ -150,9 +145,7 @@ if ! grep -q "setxkbmap de nodeadkeys" ~/.config/fish/config.fish; then
 fi
 
 echo
-echo "✅  Optisches Feintuning v6.9 abgeschlossen!"
-echo "🎨  Arc-Dark + Papirus + Bibata aktiv"
-echo "🌫️  Picom Blur & Alacritty Transparenz konfiguriert"
-echo "🧠  slstatus ohne netspeed-Fehler kompiliert"
-echo "⌨️  Tastaturlayout dauerhaft Deutsch (nodeadkeys)"
-echo "🔔  Dunst & Rofi starten automatisch"
+echo "✅ Optisches Feintuning v6.10 fertig!"
+echo "🧠 slstatus ohne Netz-Module kompiliert"
+echo "⌨️ Tastaturlayout dauerhaft Deutsch (nodeadkeys)"
+echo "🌫️ Picom & 🔔 Dunst autostart aktiv • 🎨 Arc-Dark Theme"
