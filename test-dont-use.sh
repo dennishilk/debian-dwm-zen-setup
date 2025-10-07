@@ -71,7 +71,16 @@ done
 sudo apt install -y xorg xinit dwm dmenu picom alacritty fonts-nerd-fonts \
   fish htop tmux neofetch git build-essential feh \
   pipewire wireplumber pipewire-audio pipewire-pulse \
-  timeshift grub-btrfs timeshift-autosnap
+  timeshift grub-btrfs timeshift-autosnap zram-tools
+
+# ── ZRAM Configuration
+echo "💾 Aktiviere ZRAM (50% RAM, LZ4-Kompression)"
+sudo bash -c 'cat > /etc/default/zramswap <<EOF
+PERCENT=50
+ALGO=lz4
+EOF'
+sudo systemctl enable zramswap.service
+sudo systemctl start zramswap.service
 
 # ── Wallpaper & Config
 mkdir -p ~/.config/dwm
@@ -148,7 +157,7 @@ function fish_greeting
     echo "⚙️  Kernel:" (uname -r)
     echo "⏱️  Current uptime:" (uptime -p | sed 's/up //')
 
-    # Berechne Gesamt-Uptime in Tagen
+    # Gesamt-Uptime speichern
     set uptime_seconds (awk '{print int($1)}' /proc/uptime)
     set saved_total (cat /var/lib/system-uptime.db ^/dev/null 2>/dev/null; or echo 0)
     set new_total (math "$uptime_seconds + $saved_total")
@@ -164,6 +173,15 @@ function fish_greeting
     echo "💽  Disk:" (df -h / | awk 'NR==2 {print $5 " of " $2}')
     echo "💾  RAM:" (free -h | awk '/Mem/ {print $3 " / " $2}')
     echo "🔊  Audio: PipeWire active"
+
+    # ZRAM Info
+    if grep -q "/dev/zram" /proc/swaps
+        set zsize (grep MemTotal /proc/meminfo | awk '{printf "%.0f", $2/2048}')
+        echo "🧠  ZRAM: active (≈"$zsize" MB compressed swap)"
+    else
+        echo "🧠  ZRAM: not active"
+    end
+
     if test -d /timeshift
         echo "💾  Timeshift: enabled (autosnap)"
     else
@@ -186,5 +204,5 @@ cd /usr/local/src/slstatus && sudo make clean install
 echo
 echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
-echo "🧠 Super + Return = Alacritty (mit Total System Uptime Dashboard)"
-echo "🎨 Wallpaper, Transparenz, PipeWire und Fish aktiviert."
+echo "🧠 Super + Return = Alacritty (mit ZRAM & Total System Uptime Dashboard)"
+echo "🎨 Wallpaper, Transparenz, PipeWire, Fish & Timeshift aktiv."
