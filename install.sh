@@ -2,7 +2,7 @@
 set -e
 
 # ────────────────────────────────
-# Debian 13 DWM Ultimate v6 Setup
+# Debian 13 DWM Ultimate v6.1 Setup
 # By Dennis Hilk
 # ────────────────────────────────
 
@@ -94,7 +94,6 @@ fi
 # ─── GPU Detection ──────────────────────────────────────────────────────
 if [ "$ONLY_CONFIG" = false ]; then
     msg "Detecting graphics card..."
-
     GPU=$(lspci | grep -E "VGA|3D" | tr '[:upper:]' '[:lower:]')
 
     if echo "$GPU" | grep -q "nvidia"; then
@@ -138,11 +137,27 @@ EOF
     sudo systemctl start zramswap
 fi
 
-# ─── Config Copy ─────────────────────────────────────────────────────────
+# ─── DWM Config Copy ─────────────────────────────────────────────────────
 msg "Setting up DWM configuration..."
 mkdir -p "$CONFIG_DIR"
-cp -r "$SCRIPT_DIR"/suckless/* "$CONFIG_DIR"/ || die "Failed to copy configs"
 
+if [ -d "$SCRIPT_DIR/suckless" ]; then
+    msg "Found 'suckless' directory, copying from there..."
+    cp -r "$SCRIPT_DIR/suckless/"* "$CONFIG_DIR"/ || die "Failed to copy configs from suckless/"
+else
+    msg "No 'suckless' directory found, copying configs directly from script folder..."
+    for dir in dwm st slstatus; do
+        if [ -d "$SCRIPT_DIR/$dir" ]; then
+            cp -r "$SCRIPT_DIR/$dir" "$CONFIG_DIR"/ || die "Failed to copy $dir"
+        fi
+    done
+fi
+
+if [ ! -d "$CONFIG_DIR/dwm" ]; then
+    die "No dwm configuration found. Make sure the 'dwm' folder is in the same directory as this script."
+fi
+
+# ─── Build suckless tools ────────────────────────────────────────────────
 msg "Building DWM and ST..."
 for tool in dwm st; do
     cd "$CONFIG_DIR/$tool" || die "Cannot find $tool"
