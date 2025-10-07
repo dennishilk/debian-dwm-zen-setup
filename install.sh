@@ -1,213 +1,178 @@
 #!/usr/bin/env bash
 # ────────────────────────────────────────────────
-# Debian 13 DWM Ultimate v.1337.DeineMUM.  (by Dennis Hilk)
-# Zen Kernel • GPU Auto Detect • ZRAM • Fish Shell • Full OS Lifetime
+# Debian 13 DWM Ultimate Setup by Dennis Hilk
+# Clean, menu-driven installer (Fish autostart)
 # ────────────────────────────────────────────────
 
-set -euo pipefail
-GREEN="\033[1;32m"; YELLOW="\033[1;33m"; RESET="\033[0m"
+set -e
 
-CONFIG_DIR="$HOME/.config/dwm"
-SRC_DIR="$HOME/.local/src"
-AUTOSTART_SCRIPT="$CONFIG_DIR/autostart.sh"
-WALLPAPER="$CONFIG_DIR/wallpaper.png"
-
-echo -e "${GREEN}=== Debian 13 DWM Ultimate v9 Setup (by Dennis Hilk) ===${RESET}"
-
-if [ "$EUID" -eq 0 ]; then
-  echo "Bitte nicht als root ausführen."; exit 1
+if [[ $EUID -ne 0 ]]; then
+  echo "Bitte mit sudo oder als root ausführen."
+  exit 1
 fi
 
-# ────────────────────────────────────────────────
-# 1. Basis-System vorbereiten
-# ────────────────────────────────────────────────
-echo -e "\n${YELLOW}→ Installiere Basis-Pakete...${RESET}"
-sudo apt update
-sudo apt install -y build-essential git curl wget feh xorg xinit \
-  libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev \
-  pipewire pipewire-pulse wireplumber fish fastfetch zram-tools
+GREEN="\e[32m"; RED="\e[31m"; YELLOW="\e[33m"; RESET="\e[0m"
 
-# ────────────────────────────────────────────────
-# 2. Zen-Kernel installieren (Backports kompatibel)
-# ────────────────────────────────────────────────
-echo -e "\n${YELLOW}→ Installiere Zen-Kernel (Backports)...${RESET}"
-if ! grep -q "trixie-backports" /etc/apt/sources.list /etc/apt/sources.list.d/*.list 2>/dev/null; then
-  echo "deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware" | \
-    sudo tee /etc/apt/sources.list.d/backports.list
-  sudo apt update
-fi
-
-sudo apt install -t trixie-backports -y linux-image-amd64 linux-image-rt-amd64 || {
-  echo -e "${YELLOW}Zen Kernel nicht verfügbar, installiere aktuellen Low-Latency Kernel...${RESET}"
-  sudo apt install -y linux-image-rt-amd64
-}
-
-# ────────────────────────────────────────────────
-# 3. GPU Auto Detect
-# ────────────────────────────────────────────────
-echo -e "\n${YELLOW}→ Erkenne und installiere GPU-Treiber...${RESET}"
-GPU=$(lspci | grep -E "VGA|3D" || true)
-if echo "$GPU" | grep -qi "NVIDIA"; then
-  echo -e "${GREEN}NVIDIA GPU erkannt.${RESET}"
-  sudo apt install -y nvidia-driver firmware-misc-nonfree
-elif echo "$GPU" | grep -qi "AMD"; then
-  echo -e "${GREEN}AMD GPU erkannt.${RESET}"
-  sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools
-elif echo "$GPU" | grep -qi "Intel"; then
-  echo -e "${GREEN}Intel GPU erkannt.${RESET}"
-  sudo apt install -y intel-media-va-driver-non-free mesa-vulkan-drivers vulkan-tools
-else
-  echo -e "${YELLOW}Keine GPU erkannt – überspringe Installation.${RESET}"
-fi
-
-# ────────────────────────────────────────────────
-# 4. ZRAM aktivieren
-# ────────────────────────────────────────────────
-echo -e "\n${YELLOW}→ Aktiviere ZRAM...${RESET}"
-sudo tee /etc/default/zram-config >/dev/null <<'EOF'
-ALGO=zstd
-PERCENT=75
-PRIORITY=100
-EOF
-sudo systemctl enable --now zramswap.service
-
-# ────────────────────────────────────────────────
-# 5. DWM / DMENU / ST
-# ────────────────────────────────────────────────
-mkdir -p "$SRC_DIR" "$CONFIG_DIR"
-
-install_from_suckless() {
-  local name=$1; local url=$2
-  local path="$SRC_DIR/$name"
-  echo -e "\n${YELLOW}→ Installiere $name...${RESET}"
-  [ -d "$path" ] || git clone "$url" "$path"
-  cd "$path"
-  sudo make clean install
-}
-
-install_from_suckless "dwm" "https://git.suckless.org/dwm"
-install_from_suckless "dmenu" "https://git.suckless.org/dmenu"
-
-read -rp "Möchtest du st (suckless terminal) installieren? [y/N]: " stinstall
-[[ "$stinstall" =~ ^[Yy]$ ]] && install_from_suckless "st" "https://git.suckless.org/st"
-
-# ────────────────────────────────────────────────
-# 6. Xinit + Autostart
-# ────────────────────────────────────────────────
-cat <<EOF > "$HOME/.xinitrc"
-#!/bin/sh
-xsetroot -cursor_name left_ptr
-bash "$AUTOSTART_SCRIPT" &
-exec dwm
-EOF
-chmod +x "$HOME/.xinitrc"
-
-grep -q "startx" "$HOME/.bash_profile" 2>/dev/null || cat <<'EOF' >> "$HOME/.bash_profile"
-if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
-  startx
-fi
-EOF
-
-# ────────────────────────────────────────────────
-# 7. Fish-Shell mit vollständiger OS-Zeit
-# ────────────────────────────────────────────────
-sudo chsh -s /usr/bin/fish "$USER"
-FISH_CONFIG="$HOME/.config/fish/config.fish"
-mkdir -p "$(dirname "$FISH_CONFIG")"
-
-cat <<'EOF' > "$FISH_CONFIG"
-# ────────────────────────────────────────────────
-# Fish Config – Debian 13 DWM Ultimate v9 (by Dennis Hilk)
-# ────────────────────────────────────────────────
-set fish_greeting
 clear
+echo -e "${GREEN}──────────────────────────────────────────────"
+echo -e "        DWM Ultimate Setup (Debian 13)"
+echo -e "──────────────────────────────────────────────${RESET}"
+
+while true; do
+CHOICE=$(dialog --clear --stdout --title "DWM Setup Menü" \
+  --menu "Wähle eine Option:" 23 75 12 \
+  1 "System aktualisieren" \
+  2 "Fish Shell + Systeminfos" \
+  3 "GPU-Treiber automatisch erkennen" \
+  4 "Google Chrome installieren" \
+  5 "DWM + Tools installieren" \
+  6 "Wallpaper aktivieren" \
+  7 "Zen Kernel installieren" \
+  8 "Autostart für DWM in Fish aktivieren" \
+  9 "Neustart" \
+  10 "Beenden")
+
+clear
+case $CHOICE in
+# ────────────────────────────────────────────────
+1)
+  echo -e "${YELLOW}→ System wird aktualisiert...${RESET}"
+  apt update && apt full-upgrade -y
+  echo -e "${GREEN}✔ Systemupdate abgeschlossen.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
+# ────────────────────────────────────────────────
+2)
+  echo -e "${YELLOW}→ Installiere Fish Shell...${RESET}"
+  apt install -y fish fastfetch
+  chsh -s /usr/bin/fish "$SUDO_USER"
+  mkdir -p /home/$SUDO_USER/.config/fish
+  cat <<'EOF' > /home/$SUDO_USER/.config/fish/config.fish
+# ────────────────────────────────────────────────
+# Fish Config mit Systeminfo
+fastfetch
+echo ""
 set_color cyan
-echo "──────────────────────────────"
-echo "  Debian 13 DWM Ultimate v9"
-echo "──────────────────────────────"
-set_color yellow
-set osname (lsb_release -ds)
-set kernel (uname -r)
-set uptime (uptime -p)
-
-# OS Install Date
-set install_date "unbekannt"
-if test -e /var/log/installer/syslog
-    set install_date (stat -c %y /var/log/installer/syslog | cut -d'.' -f1)
-else if test -e /etc/debian_version
-    set install_date (tune2fs -l (mount | grep ' / ' | awk '{print $1}') | grep 'Filesystem created:' | sed 's/.*created: //')
-end
-
+echo "OS:" (grep PRETTY_NAME /etc/os-release | cut -d '=' -f2 | tr -d '"')
 set_color green
-echo "OS: $osname"
-echo "Kernel: $kernel"
-echo "Installiert am: $install_date"
-echo "Uptime: $uptime"
-echo "Memory: "(free -h | awk '/Mem:/ {print $3 " / " $2}')
-echo "──────────────────────────────"
-set_color cyan
-neofetch --color_blocks off --disable uptime kernel shell resolution gpu cpu gpu_temp disk
+echo "Uptime:" (uptime -p)
+set_color yellow
+echo "System gestartet seit:" (who -b | awk '{print $3,$4}')
 set_color normal
-echo "──────────────────────────────"
+# ────────────────────────────────────────────────
+# DWM Autostart (nur auf TTY1)
+if test -z "$DISPLAY"
+    and test (tty) = "/dev/tty1"
+    echo ""
+    echo "Starte automatisch DWM..."
+    sleep 1
+    exec startx
+end
+# ────────────────────────────────────────────────
 EOF
-
+  chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/fish
+  echo -e "${GREEN}✔ Fish Shell mit Autostart eingerichtet.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
 # ────────────────────────────────────────────────
-# 8. Autostart Script
-# ────────────────────────────────────────────────
-cat <<'EOF' > "$AUTOSTART_SCRIPT"
-#!/bin/sh
-# Autostart – DWM Ultimate v9 (Dennis Hilk)
+3)
+  echo -e "${YELLOW}→ Erkenne GPU...${RESET}"
+  GPU=$(lspci | grep -E "VGA|3D")
+  echo "$GPU"
 
-# Wallpaper: Priorität auf lokales ./wallpaper.png
-if [ -f "$(dirname "$0")/../../wallpaper.png" ]; then
-  feh --bg-fill "$(dirname "$0")/../../wallpaper.png" &
-else
-  feh --bg-fill ~/.config/dwm/wallpaper.png &
-fi
-
-# Audio
-pipewire & disown
-pipewire-pulse & disown
-wireplumber & disown
-
-# Terminal Variable
-if command -v alacritty >/dev/null 2>&1; then
-  export TERMINAL="alacritty"
-else
-  export TERMINAL="x-terminal-emulator"
-fi
-
-echo "[DWM] gestartet am $(date)" >> ~/.config/dwm/dwm.log
-EOF
-chmod +x "$AUTOSTART_SCRIPT"
-
+  if echo "$GPU" | grep -qi nvidia; then
+    echo -e "${GREEN}NVIDIA erkannt – installiere Treiber...${RESET}"
+    apt install -y nvidia-driver firmware-misc-nonfree
+  elif echo "$GPU" | grep -qi amd; then
+    echo -e "${GREEN}AMD erkannt – installiere Treiber...${RESET}"
+    apt install -y firmware-amd-graphics mesa-vulkan-drivers
+  elif echo "$GPU" | grep -qi intel; then
+    echo -e "${GREEN}Intel erkannt – installiere Treiber...${RESET}"
+    apt install -y intel-media-va-driver-non-free mesa-va-drivers
+  else
+    echo -e "${RED}Keine bekannte GPU erkannt.${RESET}"
+  fi
+  echo -e "${GREEN}✔ GPU-Treiber abgeschlossen.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
 # ────────────────────────────────────────────────
-# 9. Wallpaper kopieren, falls im selben Ordner
+4)
+  echo -e "${YELLOW}→ Installiere Google Chrome...${RESET}"
+  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb
+  apt install -y /tmp/chrome.deb || apt -f install -y
+  rm -f /tmp/chrome.deb
+  echo -e "${GREEN}✔ Google Chrome installiert.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
 # ────────────────────────────────────────────────
-SCRIPT_DIR=$(dirname "$(realpath "$0")")
-if [ -f "$SCRIPT_DIR/wallpaper.png" ]; then
-  cp "$SCRIPT_DIR/wallpaper.png" "$WALLPAPER"
-else
-  wget -q -O "$WALLPAPER" https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux.svg || true
-fi
+5)
+  echo -e "${YELLOW}→ Installiere DWM und Tools...${RESET}"
+  apt install -y build-essential libx11-dev libxft-dev libxinerama-dev feh xinit alacritty git curl unzip
 
-# ────────────────────────────────────────────────
-# 10. Desktop Session Datei
-# ────────────────────────────────────────────────
-sudo mkdir -p /usr/share/xsessions
-sudo tee /usr/share/xsessions/dwm.desktop >/dev/null <<EOF
-[Desktop Entry]
-Encoding=UTF-8
-Name=DWM Ultimate v9
-Comment=Dynamic Window Manager (by Dennis Hilk)
-Exec=/usr/bin/startx
-Type=XSession
-EOF
+  mkdir -p /home/$SUDO_USER/.config/dwm
+  cd /home/$SUDO_USER/.config/dwm
 
+  git clone https://git.suckless.org/dwm
+  cd dwm
+  make clean install
+  cd ..
+
+  echo 'exec dwm' > /home/$SUDO_USER/.xinitrc
+  chown -R $SUDO_USER:$SUDO_USER /home/$SUDO_USER/.config/dwm /home/$SUDO_USER/.xinitrc
+  echo -e "${GREEN}✔ DWM installiert.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
 # ────────────────────────────────────────────────
-# 11. Fertig
+6)
+  echo -e "${YELLOW}→ Wallpaper aktivieren...${RESET}"
+  WALLPAPER="/home/$SUDO_USER/.config/dwm/wallpaper.png"
+  if [[ -f "$WALLPAPER" ]]; then
+    echo "feh --bg-scale $WALLPAPER" > /home/$SUDO_USER/.fehbg
+    chmod +x /home/$SUDO_USER/.fehbg
+    if ! grep -q ".fehbg" /home/$SUDO_USER/.xinitrc; then
+      echo "~/.fehbg &" >> /home/$SUDO_USER/.xinitrc
+    fi
+    echo -e "${GREEN}✔ Wallpaper hinzugefügt.${RESET}"
+  else
+    echo -e "${RED}Kein wallpaper.png gefunden! Bitte in ~/.config/dwm legen.${RESET}"
+  fi
+  read -rp "Weiter mit Enter..."
+  ;;
 # ────────────────────────────────────────────────
-echo -e "\n${GREEN}✅ DWM Ultimate v9 erfolgreich installiert!${RESET}"
-echo -e "Fish Shell zeigt nun komplette OS-Zeit, Kernel, RAM & GPU."
-echo -e "Wallpaper wird automatisch aus demselben Ordner verwendet."
-echo -e "Starte das System neu, um den Kernel und DWM zu aktivieren."
+7)
+  echo -e "${YELLOW}→ Installiere Zen Kernel...${RESET}"
+  apt install -y linux-image-zen linux-headers-zen || {
+    echo -e "${RED}Zen Kernel nicht in Repo gefunden. Füge Sid Repo hinzu...${RESET}"
+    echo "deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/sid.list
+    apt update
+    apt install -y linux-image-zen linux-headers-zen
+  }
+  echo -e "${GREEN}✔ Zen Kernel installiert.${RESET}"
+  echo -e "${YELLOW}Bitte nach Installation neu starten, um Zen Kernel zu nutzen.${RESET}"
+  read -rp "Weiter mit Enter..."
+  ;;
+# ────────────────────────────────────────────────
+8)
+  echo -e "${YELLOW}→ Prüfe Fish-Autostart-Konfiguration...${RESET}"
+  if grep -q "exec startx" /home/$SUDO_USER/.config/fish/config.fish; then
+    echo -e "${GREEN}✔ Fish-Autostart ist bereits aktiv.${RESET}"
+  else
+    echo -e "${RED}Fish wurde noch nicht konfiguriert. Bitte Menüpunkt 2 zuerst ausführen.${RESET}"
+  fi
+  read -rp "Weiter mit Enter..."
+  ;;
+# ────────────────────────────────────────────────
+9)
+  echo -e "${YELLOW}→ Starte System neu...${RESET}"
+  sleep 2
+  reboot
+  ;;
+# ────────────────────────────────────────────────
+10)
+  clear
+  echo -e "${GREEN}Installation abgeschlossen!${RESET}"
+  echo -e "${YELLOW}Nach dem Login auf TTY1 startet DWM automatisch über Fish.${RESET}"
+  exit 0
+  ;;
+esac
+done
