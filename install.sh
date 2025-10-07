@@ -25,7 +25,7 @@ echo -e "\n${YELLOW}→ Installiere Basis-Pakete...${RESET}"
 sudo apt update
 sudo apt install -y build-essential git curl wget feh xorg xinit \
   libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev \
-  pipewire pipewire-pulse wireplumber fish neofetch zram-tools
+  pipewire pipewire-pulse wireplumber fish fastfetch zram-tools
 
 # ────────────────────────────────────────────────
 # 2. Zen-Kernel installieren (Backports kompatibel)
