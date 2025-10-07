@@ -1,187 +1,187 @@
-#!/usr/bin/env bash
-# ────────────────────────────────────────────────
-# Debian 13 DWM Ultimate Setup by Dennis Hilk
-# Fixed: all actions in user context, safe local DWM build
-# ────────────────────────────────────────────────
-
+#!/bin/bash
 set -e
 
-if [[ $EUID -ne 0 ]]; then
-  echo "Bitte mit sudo oder als root ausführen."
-  exit 1
-fi
+# ────────────────────────────────
+# Debian 13 DWM Ultimate v6 Setup
+# By Dennis Hilk
+# ────────────────────────────────
 
-if ! command -v dialog &>/dev/null; then
-  echo "→ Installiere fehlendes Paket: dialog"
-  apt update -y && apt install -y dialog
-fi
+ONLY_CONFIG=false
+EXPORT_PACKAGES=false
 
-GREEN="\e[32m"; RED="\e[31m"; YELLOW="\e[33m"; RESET="\e[0m"
-SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-USER_HOME="/home/$SUDO_USER"
-
-clear
-echo -e "${GREEN}──────────────────────────────────────────────"
-echo -e "        DWM Ultimate Setup (Debian 13)"
-echo -e "──────────────────────────────────────────────${RESET}"
-
-while true; do
-CHOICE=$(dialog --clear --stdout --title "DWM Setup Menü" \
-  --menu "Wähle eine Option:" 23 75 12 \
-  1 "System aktualisieren" \
-  2 "Fish Shell + Systeminfos" \
-  3 "GPU-Treiber automatisch erkennen" \
-  4 "Google Chrome installieren" \
-  5 "DWM + Tools installieren (lokal, mit Wallpaper)" \
-  6 "Zen Kernel installieren / prüfen" \
-  7 "Neustart" \
-  8 "Beenden")
-
-clear
-case $CHOICE in
-# ────────────────────────────────────────────────
-1)
-  echo -e "${YELLOW}→ System wird aktualisiert...${RESET}"
-  apt update && apt full-upgrade -y
-  echo -e "${GREEN}✔ Systemupdate abgeschlossen.${RESET}"
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-2)
-  echo -e "${YELLOW}→ Installiere Fish Shell...${RESET}"
-  apt install -y fish fastfetch
-
-  sudo -u "$SUDO_USER" mkdir -p "$USER_HOME/.config/fish/functions" \
-                              "$USER_HOME/.config/fish/conf.d" \
-                              "$USER_HOME/.config/fish/completions"
-
-  sudo -u "$SUDO_USER" bash -c "cat > '$USER_HOME/.config/fish/config.fish' <<'EOF'
-fastfetch
-echo ''
-set_color cyan
-echo 'OS:' (grep PRETTY_NAME /etc/os-release | cut -d '=' -f2 | tr -d '\"')
-set_color green
-echo 'Uptime:' (uptime -p)
-set_color yellow
-echo 'System gestartet seit:' (who -b | awk '{print \$3,\$4}')
-set_color normal
-
-if test -z '\$DISPLAY'
-    and test (tty) = '/dev/tty1'
-    echo ''
-    echo '🐧 Willkommen Dennis — DWM startet in 2 Sekunden...'
-    sleep 2
-    exec startx
-end
-EOF"
-
-  chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.config/fish"
-  chsh -s /usr/bin/fish "$SUDO_USER"
-  echo -e "${GREEN}✔ Fish Shell mit Autostart eingerichtet.${RESET}"
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-3)
-  echo -e "${YELLOW}→ Erkenne GPU...${RESET}"
-  GPU=$(lspci | grep -E "VGA|3D")
-  echo "$GPU"
-  if echo "$GPU" | grep -qi nvidia; then
-    apt install -y nvidia-driver firmware-misc-nonfree
-    echo -e "${GREEN}✔ NVIDIA-Treiber installiert.${RESET}"
-  elif echo "$GPU" | grep -qi amd; then
-    apt install -y firmware-amd-graphics mesa-vulkan-drivers
-    echo -e "${GREEN}✔ AMD-Treiber installiert.${RESET}"
-  elif echo "$GPU" | grep -qi intel; then
-    apt install -y intel-media-va-driver-non-free mesa-va-drivers
-    echo -e "${GREEN}✔ Intel-Treiber installiert.${RESET}"
-  else
-    echo -e "${RED}Keine bekannte GPU erkannt.${RESET}"
-  fi
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-4)
-  echo -e "${YELLOW}→ Installiere Google Chrome...${RESET}"
-  wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb
-  apt install -y /tmp/chrome.deb || apt -f install -y
-  rm -f /tmp/chrome.deb
-  echo -e "${GREEN}✔ Google Chrome installiert.${RESET}"
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-5)
-  echo -e "${YELLOW}→ Installiere DWM lokal unter ~/.config/dwm (Benutzerrechte)...${RESET}"
-  apt install -y build-essential libx11-dev libxft-dev libxinerama-dev feh xinit alacritty git curl unzip
-
-  sudo -u "$SUDO_USER" mkdir -p "$USER_HOME/.config/dwm"
-  cd "$USER_HOME/.config/dwm"
-
-  if [[ ! -d "$USER_HOME/.config/dwm/dwm" ]]; then
-    sudo -u "$SUDO_USER" git clone https://git.suckless.org/dwm "$USER_HOME/.config/dwm/dwm"
-  fi
-
-  cd "$USER_HOME/.config/dwm/dwm"
-  sudo -u "$SUDO_USER" make clean all
-
-  # Lokale Startdatei
-  echo 'exec ~/.config/dwm/dwm/dwm' > "$USER_HOME/.xinitrc"
-
-  # Wallpaper aus Script-Ordner kopieren
-  WALLPAPER_SRC="$SCRIPT_DIR/wallpaper.png"
-  WALLPAPER_DST="$USER_HOME/.config/dwm/wallpaper.png"
-
-  if [[ -f "$WALLPAPER_SRC" ]]; then
-    sudo -u "$SUDO_USER" cp "$WALLPAPER_SRC" "$WALLPAPER_DST"
-    echo "feh --bg-scale $WALLPAPER_DST" > "$USER_HOME/.fehbg"
-    chmod +x "$USER_HOME/.fehbg"
-    if ! grep -q ".fehbg" "$USER_HOME/.xinitrc"; then
-      echo "~/.fehbg &" >> "$USER_HOME/.xinitrc"
-    fi
-    echo -e "${GREEN}✔ Wallpaper automatisch kopiert und aktiviert.${RESET}"
-  else
-    echo -e "${RED}⚠️  Kein wallpaper.png im Skriptordner gefunden (${SCRIPT_DIR})${RESET}"
-  fi
-
-  chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.config/dwm" "$USER_HOME/.xinitrc"
-  echo -e "${GREEN}✔ DWM vollständig installiert und lokal eingerichtet.${RESET}"
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-6)
-  echo -e "${YELLOW}→ Prüfe Zen Kernel...${RESET}"
-  if uname -r | grep -q "zen"; then
-    echo -e "${GREEN}✔ Zen Kernel aktiv: $(uname -r)${RESET}"
-  elif dpkg -l | grep -q linux-image-zen; then
-    echo -e "${GREEN}✔ Zen Kernel installiert, aber nicht aktiv.${RESET}"
-    echo -e "${YELLOW}→ Bitte Neustart durchführen.${RESET}"
-  else
-    echo -e "${YELLOW}→ Installiere Zen Kernel...${RESET}"
-    apt update
-    if ! apt install -y linux-image-zen linux-headers-zen; then
-      echo -e "${RED}Zen Kernel nicht verfügbar – Fallback aktiv.${RESET}"
-      echo "deb http://deb.debian.org/debian sid main contrib non-free non-free-firmware" > /etc/apt/sources.list.d/zen-temp.list
-      apt update -y || true
-      apt install -y linux-image-amd64 linux-headers-amd64 || apt install -y linux-image-cloud-amd64
-      rm -f /etc/apt/sources.list.d/zen-temp.list
-      apt update -y
-    fi
-    echo -e "${GREEN}✔ Kernel-Installation abgeschlossen.${RESET}"
-    echo -e "${YELLOW}Bitte neu starten.${RESET}"
-  fi
-  read -rp "Weiter mit Enter..."
-  ;;
-# ────────────────────────────────────────────────
-7)
-  echo -e "${YELLOW}→ Starte System neu...${RESET}"
-  sleep 2
-  reboot
-  ;;
-# ────────────────────────────────────────────────
-8)
-  clear
-  echo -e "${GREEN}Installation abgeschlossen!${RESET}"
-  echo -e "${YELLOW}Nach Login auf TTY1 startet DWM automatisch über Fish.${RESET}"
-  exit 0
-  ;;
-esac
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --only-config) ONLY_CONFIG=true; shift ;;
+        --export-packages) EXPORT_PACKAGES=true; shift ;;
+        --help)
+            echo "Usage: $0 [OPTIONS]"
+            echo "  --only-config      Only copy config files (skip packages and kernel)"
+            echo "  --export-packages  Export package list and exit"
+            echo "  --help             Show this help message"
+            exit 0
+            ;;
+        *)
+            echo "Unknown option: $1"
+            exit 1 ;;
+    esac
 done
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+CONFIG_DIR="$HOME/.config/dwm"
+TEMP_DIR="/tmp/dwm_$$"
+LOG_FILE="$HOME/dwm-install.log"
+
+exec > >(tee -a "$LOG_FILE") 2>&1
+trap "rm -rf $TEMP_DIR" EXIT
+
+RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
+die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
+msg() { echo -e "${CYAN}$*${NC}"; }
+
+clear
+echo -e "${CYAN}"
+echo "──────────────────────────────"
+echo " Debian 13 DWM Ultimate Setup "
+echo "──────────────────────────────"
+echo -e "${NC}\n"
+
+read -p "Proceed with full installation (Zen Kernel + ZRAM + GPU + Chrome)? (y/n) " -n 1 -r
+echo
+[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+
+# ─── System Update ───────────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Updating system..."
+    sudo apt-get update && sudo apt-get upgrade -y
+fi
+
+# ─── Packages ────────────────────────────────────────────────────────────
+PACKAGES_CORE=(
+    xorg xorg-dev xbacklight xbindkeys xvkbd xinput
+    build-essential sxhkd xdotool dbus-x11
+    libnotify-bin libnotify-dev libusb-0.1-4
+)
+
+PACKAGES_UI=( rofi dunst feh lxappearance network-manager-gnome )
+PACKAGES_FILE_MANAGER=( thunar thunar-archive-plugin thunar-volman gvfs-backends dialog mtools smbclient cifs-utils unzip )
+PACKAGES_AUDIO=( pavucontrol pulsemixer pamixer pipewire-audio )
+PACKAGES_UTILITIES=( avahi-daemon acpi acpid xfce4-power-manager flameshot qimgv xdg-user-dirs-gtk fd-find zram-tools )
+PACKAGES_TERMINAL=( suckless-tools alacritty )
+PACKAGES_FONTS=( fonts-recommended fonts-font-awesome fonts-terminus )
+PACKAGES_BUILD=( cmake meson ninja-build curl pkg-config git wget ca-certificates gnupg )
+
+# ─── Base Installation ───────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Installing base packages..."
+    sudo apt-get install -y "${PACKAGES_CORE[@]}" "${PACKAGES_UI[@]}" \
+        "${PACKAGES_FILE_MANAGER[@]}" "${PACKAGES_AUDIO[@]}" \
+        "${PACKAGES_UTILITIES[@]}" "${PACKAGES_TERMINAL[@]}" \
+        "${PACKAGES_FONTS[@]}" "${PACKAGES_BUILD[@]}"
+fi
+
+# ─── Zen Kernel ─────────────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Installing Zen Kernel..."
+    if sudo apt-get install -y linux-image-zen linux-headers-zen 2>/dev/null; then
+        msg "Zen Kernel installed successfully."
+    else
+        msg "Zen Kernel not found, installing fallback kernel..."
+        sudo apt-get install -y linux-image-amd64 linux-headers-amd64
+    fi
+    sudo update-grub
+fi
+
+# ─── GPU Detection ──────────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Detecting graphics card..."
+
+    GPU=$(lspci | grep -E "VGA|3D" | tr '[:upper:]' '[:lower:]')
+
+    if echo "$GPU" | grep -q "nvidia"; then
+        msg "Detected NVIDIA GPU. Installing drivers..."
+        sudo apt-get install -y nvidia-driver nvidia-settings
+        sudo systemctl enable nvidia-persistenced || true
+
+    elif echo "$GPU" | grep -q "amd"; then
+        msg "Detected AMD GPU. Installing Mesa/AMDGPU drivers..."
+        sudo apt-get install -y firmware-amd-graphics mesa-vulkan-drivers xserver-xorg-video-amdgpu
+
+    elif echo "$GPU" | grep -q "intel"; then
+        msg "Detected Intel GPU. Installing Intel drivers..."
+        sudo apt-get install -y firmware-misc-nonfree intel-media-va-driver-non-free i965-va-driver mesa-vulkan-drivers
+
+    else
+        msg "No supported GPU detected. Skipping GPU driver setup."
+    fi
+fi
+
+# ─── Google Chrome ──────────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Installing Google Chrome Stable..."
+    wget -q -O- https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | \
+        sudo tee /etc/apt/sources.list.d/google-chrome.list
+    sudo apt-get update
+    sudo apt-get install -y google-chrome-stable || msg "Chrome installation failed!"
+fi
+
+# ─── ZRAM Setup ─────────────────────────────────────────────────────────
+if [ "$ONLY_CONFIG" = false ]; then
+    msg "Configuring ZRAM..."
+    sudo tee /etc/default/zramswap >/dev/null <<EOF
+ENABLED=true
+PERCENT=50
+PRIORITY=100
+ALGO=lz4
+EOF
+    sudo systemctl enable zramswap
+    sudo systemctl start zramswap
+fi
+
+# ─── Config Copy ─────────────────────────────────────────────────────────
+msg "Setting up DWM configuration..."
+mkdir -p "$CONFIG_DIR"
+cp -r "$SCRIPT_DIR"/suckless/* "$CONFIG_DIR"/ || die "Failed to copy configs"
+
+msg "Building DWM and ST..."
+for tool in dwm st; do
+    cd "$CONFIG_DIR/$tool" || die "Cannot find $tool"
+    make && sudo make clean install || die "Failed to build $tool"
+done
+
+# ─── Desktop Entries ─────────────────────────────────────────────────────
+sudo mkdir -p /usr/share/xsessions
+cat <<EOF | sudo tee /usr/share/xsessions/dwm.desktop >/dev/null
+[Desktop Entry]
+Name=dwm
+Comment=Dynamic Window Manager
+Exec=dwm
+Type=XSession
+EOF
+
+mkdir -p ~/.local/share/applications
+cat > ~/.local/share/applications/alacritty.desktop << EOF
+[Desktop Entry]
+Name=Alacritty
+Comment=GPU accelerated terminal
+Exec=alacritty
+Icon=utilities-terminal
+Terminal=false
+Type=Application
+Categories=System;TerminalEmulator;
+EOF
+
+# ─── Wallpaper Setup ────────────────────────────────────────────────────
+if [ -f "$SCRIPT_DIR/wallpaper.png" ]; then
+    msg "Applying wallpaper..."
+    mkdir -p "$HOME/.config/dwm"
+    cp "$SCRIPT_DIR/wallpaper.png" "$HOME/.config/dwm/"
+    feh --bg-fill "$HOME/.config/dwm/wallpaper.png" || true
+else
+    msg "No wallpaper.png found, skipping."
+fi
+
+# ─── Done ───────────────────────────────────────────────────────────────
+echo -e "\n${GREEN}✅ Installation complete!${NC}"
+echo "Zen Kernel, ZRAM, GPU drivers, and Chrome are installed."
+echo "Reboot now to start DWM on Debian 13."
