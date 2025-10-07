@@ -76,13 +76,12 @@ sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh 
 pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools \
 libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
 
-# ── Stylischer Nerd-Font-Balken
+# ── Nerd-Font mit stylischem Fortschrittsbalken
 sudo apt install -y unzip >/dev/null
 FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
 FONT_DIR="$HOME/.local/share/fonts"; ZIP_PATH="/tmp/JetBrainsMono.zip"; mkdir -p "$FONT_DIR"
 animate_bar(){ local d=$1 s=0 w=40; while [ $s -le $d ]; do p=$((s*100/d)); f=$((p*w/100)); e=$((w-f)); printf "\r["; for ((i=0;i<f;i++));do printf "▰";done; for ((i=0;i<e;i++));do printf "▱";done; printf "] %3d%%" "$p"; sleep 0.05; s=$((s+1)); done; echo; }
-echo "🧩 Installing JetBrainsMono Nerd Font..."
-wget -q "$FONT_URL" -O "$ZIP_PATH" & pid=$!; while ps -p $pid >/dev/null 2>&1; do animate_bar 20; done; echo
+echo "🧩 Installing JetBrainsMono Nerd Font..."; wget -q "$FONT_URL" -O "$ZIP_PATH" & pid=$!; while ps -p $pid >/dev/null 2>&1; do animate_bar 20; done; echo
 echo "📦 Extracting Font..."; animate_bar 15; unzip -o "$ZIP_PATH" -d "$FONT_DIR" >/dev/null; fc-cache -fv >/dev/null; echo "✅ Nerd Font ready!"; sleep 1
 
 # ── ZRAM aktivieren
@@ -106,6 +105,16 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
+# ── Automatischer DWM-Start nach Login
+if ! grep -q "startx" ~/.bash_profile 2>/dev/null; then
+  echo '
+# ── Auto start DWM on login
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  startx
+fi
+' >> ~/.bash_profile
+fi
+
 # ── Picom + Alacritty
 cat > ~/.config/dwm/picom.conf <<'EOF'
 backend="glx"; vsync=true; corner-radius=12;
@@ -119,57 +128,72 @@ colors: {primary: {background: "0x0f111a", foreground: "0xc5c8c6"}}
 shell: {program: /usr/bin/fish}
 EOF
 
-# ── Fish Shell & Dashboard
+# ── Fish Dashboard (final, fix)
 chsh -s /usr/bin/fish
 sudo mkdir -p /var/lib; [ ! -f /var/lib/system-uptime.db ] && echo "0" | sudo tee /var/lib/system-uptime.db >/dev/null
 mkdir -p ~/.config/fish
 cat > ~/.config/fish/config.fish <<'EOF'
 function fish_greeting
-  set_color cyan
-  echo "🐧 "(lsb_release -ds)" "(uname -m)
-  echo "──────────────────────────────────────────────"
-  set_color green
-  echo "🧠 Host:" (hostname)
-  echo "⚙️ Kernel:" (uname -r)
-  echo "⏱️ Uptime:" (uptime -p | sed 's/up //')
-  set u (awk '{print int($1)}' /proc/uptime)
-  set s (cat /var/lib/system-uptime.db 2>/dev/null; or echo 0)
-  if test -z "$s"; set s 0; end
-  set n (math "$u + $s" 2>/dev/null)
-  echo $n | sudo tee /var/lib/system-uptime.db >/dev/null
-  set d (math "scale=2; $n / 86400" 2>/dev/null)
-  echo "🕓 Total Uptime:" $d" days"
-  echo "📦 Packages:" (dpkg -l | grep '^ii' | wc -l)" (apt)"
-  echo "💻 Shell:" (fish --version | awk '{print $3}')
-  echo "🧩 WM: dwm"
-  echo "🖥️ CPU:" (lscpu | awk -F: '/Model name/ {print $2}' | sed 's/^ *//')
-  echo "🎮 GPU:" (lspci | grep -E "VGA|3D" | awk -F ': ' '{print $3}' | head -n1)
-  echo "💽 Disk:" (df -h / | awk 'NR==2 {print $5 " of " $2}')
-  echo "💾 RAM:" (free -h | awk '/Mem/ {print $3 " / " $2}')
-  echo "🧮 ZRAM:" (systemctl is-active zramswap.service)
-  echo "🔊 Audio: PipeWire active"
-  if test -d /timeshift; echo "💾 Timeshift: enabled"; else echo "💾 Timeshift: not found"; end
-  echo "──────────────────────────────────────────────"
-  echo "✨ Tip: F2 → fastfetch | F3 → htop | exit → logout"
-  set_color normal
+    set_color cyan
+    echo "🐧  "(lsb_release -ds)" "(uname -m)
+    echo "──────────────────────────────────────────────"
+    set_color green
+    echo "🧠  Host:" (hostname)
+    echo "⚙️  Kernel:" (uname -r)
+    echo "⏱️  Current uptime:" (uptime -p | sed 's/up //')
+
+    set uptime_seconds (awk '{print int($1)}' /proc/uptime)
+    set saved_total (cat /var/lib/system-uptime.db 2>/dev/null; or echo 0)
+    if not string match -rq '^[0-9]+$' -- $saved_total
+        set saved_total 0
+    end
+
+    set new_total (math $uptime_seconds + $saved_total ^/dev/null)
+    echo $new_total | sudo tee /var/lib/system-uptime.db >/dev/null
+
+    if test $new_total -gt 0
+        set total_days (math "scale=2; $new_total / 86400" 2>/dev/null)
+    else
+        set total_days 0
+    end
+
+    echo "🕓  Total system uptime:" $total_days "days"
+    echo "📦  Packages:" (dpkg -l | grep '^ii' | wc -l)" (apt)"
+    echo "💻  Shell:" (fish --version | awk '{print $3}')
+    echo "🧩  WM: dwm"
+    echo "🖥️  CPU:" (lscpu | awk -F: '/Model name/ {print $2}' | sed 's/^ *//')
+    echo "🎮  GPU:" (lspci | grep -E "VGA|3D" | awk -F ': ' '{print $3}' | head -n1)
+    echo "💽  Disk:" (df -h / | awk 'NR==2 {print $5 " of " $2}')
+    echo "💾  RAM:" (free -h | awk '/Mem/ {print $3 " / " $2}')
+    echo "🧮  ZRAM:" (systemctl is-active zramswap.service)
+    echo "🔊  Audio: PipeWire active"
+
+    if test -d /timeshift
+        echo "💾  Timeshift: enabled"
+    else
+        echo "💾  Timeshift: not found"
+    end
+
+    echo "──────────────────────────────────────────────"
+    echo "✨  Tip: F2 → fastfetch | F3 → htop | exit → logout"
+    set_color normal
 end
 EOF
 
-# ── DWM + Tools lokal
+# ── DWM lokal builden
 mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
 cd ~/.config/dwm/src
 git clone https://git.suckless.org/dwm && cd dwm && make && cp dwm ~/.config/dwm/bin && cd ..
 git clone https://git.suckless.org/dmenu && cd dmenu && make && cp dmenu ~/.config/dwm/bin && cd ..
 git clone https://git.suckless.org/slstatus && cd slstatus && make && cp slstatus ~/.config/dwm/bin && cd ..
 
-# ── PATH persistieren
+# ── PATH
 echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
 echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 
 # ── Done
-echo 
+echo
 echo "✅ Installation abgeschlossen!"
-echo "Starte DWM mit: startx"
-echo "🧠 Super + Return = Alacritty (System-Dashboard)"
+echo "🧠 Automatischer Start in DWM nach Login auf TTY1"
 echo "🎨 DWM & Tools: ~/.config/dwm/bin"
 echo "🎮 Steam-Fix, ZRAM, PipeWire, Fish & Fastfetch aktiv."
