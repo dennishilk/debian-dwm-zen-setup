@@ -27,19 +27,50 @@ case $KEYBOARD in
 esac
 
 clear
+# ───────────────────────────────────────────────
+# 1️⃣ Tastaturlayout-Auswahl (robust)
+# ───────────────────────────────────────────────
+KEYBOARD=$(dialog --menu "Wähle Tastatur-Layout:" 15 60 6 \
+1 "Deutsch (nodeadkeys)" 2 "English (US)" 3 "Français" 4 "Español" 5 "Italiano" 6 "Polski" 3>&1 1>&2 2>&3)
+
+case $KEYBOARD in
+  1) XKB_LAYOUT="de"; XKB_VARIANT="nodeadkeys";;
+  2) XKB_LAYOUT="us"; XKB_VARIANT="";;
+  3) XKB_LAYOUT="fr"; XKB_VARIANT="";;
+  4) XKB_LAYOUT="es"; XKB_VARIANT="";;
+  5) XKB_LAYOUT="it"; XKB_VARIANT="";;
+  6) XKB_LAYOUT="pl"; XKB_VARIANT="";;
+  *) XKB_LAYOUT="us"; XKB_VARIANT="";;
+esac
+
+clear
 echo "⌨️  Setze Tastaturlayout auf $XKB_LAYOUT $XKB_VARIANT ..."
+sleep 1
+
+# ── Systemweit speichern
 sudo tee /etc/default/keyboard >/dev/null <<EOF
 XKBLAYOUT="$XKB_LAYOUT"
 XKBVARIANT="$XKB_VARIANT"
 BACKSPACE="guess"
 EOF
+
 sudo dpkg-reconfigure -f noninteractive keyboard-configuration
 sudo localectl set-x11-keymap "$XKB_LAYOUT" "$XKB_VARIANT"
 
+# ── User-Configs anlegen falls nicht vorhanden
 mkdir -p ~/.config/fish
+touch ~/.config/fish/config.fish
+touch ~/.xinitrc
+
+# ── Befehle nur einmal einfügen
 grep -qxF "setxkbmap $XKB_LAYOUT $XKB_VARIANT &" ~/.xinitrc || echo "setxkbmap $XKB_LAYOUT $XKB_VARIANT &" >> ~/.xinitrc
 grep -qxF "setxkbmap $XKB_LAYOUT $XKB_VARIANT" ~/.config/fish/config.fish || echo "setxkbmap $XKB_LAYOUT $XKB_VARIANT" >> ~/.config/fish/config.fish
-setxkbmap "$XKB_LAYOUT" "$XKB_VARIANT"
+
+# ── Versuch der sofortigen Aktivierung (nur falls Display vorhanden)
+if command -v setxkbmap >/dev/null 2>&1; then
+  setxkbmap "$XKB_LAYOUT" "$XKB_VARIANT" 2>/dev/null || echo "💡 Hinweis: Layout wird beim nächsten Startx aktiv."
+fi
+
 dialog --msgbox "Tastaturlayout dauerhaft auf $XKB_LAYOUT $XKB_VARIANT gesetzt." 7 55
 clear
 
