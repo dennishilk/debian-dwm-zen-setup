@@ -1,234 +1,144 @@
-#!/bin/bash
-# ======================================================================
-# 🧠 Debian 13 DWM script by Dennis Hilk | vs.1
-# ======================================================================
+#!/usr/bin/env bash
 set -euo pipefail
-IFS=$'\n\t'
 
-# ---------- Globals ----------
-SCRIPT_DIR="$(pwd)"
-LOG="$HOME/install.log"
-DATE_TAG="$(date +%F-%H%M%S)"
+# ─────────────────────────────────────────────
+#  Debian 13 DWM Install Script by Dennis Hilk
+# ─────────────────────────────────────────────
 
-if [ "$EUID" -eq 0 ]; then
-  REAL_USER=$(logname 2>/dev/null || echo "${SUDO_USER:-root}")
-  HOME_DIR=$(eval echo "~$REAL_USER")
+abort() { echo "❌ Fehler: $1" >&2; exit 1; }
+
+# ── Check: Debian 13 only
+if [ -f /etc/os-release ]; then
+  . /etc/os-release
 else
-  REAL_USER="$USER"
-  HOME_DIR="$HOME"
+  abort "/etc/os-release nicht gefunden."
+fi
+if [ "$ID" != "debian" ] || [[ "$VERSION_ID" != "13" && "$VERSION_CODENAME" != "trixie" ]]; then
+  abort "Dieses Skript ist nur für Debian 13 (Trixie)."
+fi
+echo "✅ Debian 13 erkannt – Installation startet ..."
+
+sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip
+
+# ── Zen-Kernel
+if dialog --yesno "Zen-Kernel installieren?" 8 40; then
+  sudo apt install -y linux-image-zen linux-headers-zen || echo "⚠️ Zen-Kernel evtl. nicht im Repo verfügbar."
 fi
 
-# ---------- Logging ----------
-exec > >(tee -a "$LOG") 2>&1
-trap 'echo "❌ Error at line $LINENO. See $LOG for details." >&2' ERR
-msg() { echo -e "\n\033[1;36m==> $*\033[0m"; }
-ok()  { echo -e "✅ $*"; }
-warn(){ echo -e "⚠️  $*"; }
-
-# ---------- Helpers ----------
-backup_dir() { [ -d "$1" ] && mv "$1" "${1}__backup_$(date +%s)"; }
-ensure_dir() { mkdir -p "$1"; }
-apt_install() { sudo apt-get update -y && sudo apt-get install -y "$@"; }
-
-# ---------- Functions ----------
-detect_env() {
-  msg "Environment detection"
-  if systemd-detect-virt | grep -Eq "qemu|kvm|vmware|vbox"; then
-    PICOM_BACKEND="xrender"
+# ── GPU Driver
+if dialog --yesno "Aktuelle GPU-Treiber installieren?" 8 45; then
+  if lspci | grep -qi nvidia; then
+    echo "🟩 NVIDIA erkannt → Treiber installieren ..."
+    sudo apt install -y nvidia-driver nvidia-kernel-dkms
+  elif lspci | grep -qi amd; then
+    echo "🟥 AMD erkannt → Treiber installieren ..."
+    sudo apt install -y firmware-amd-graphics
+  elif lspci | grep -qi intel; then
+    echo "🟦 Intel erkannt → Treiber installieren ..."
+    sudo apt install -y i965-driver intel-media-va-driver-non-free
   else
-    PICOM_BACKEND="glx"
+    echo "❔ Keine unterstützte GPU erkannt."
   fi
-  echo "Picom backend: $PICOM_BACKEND"
-}
+fi
 
-install_base() {
-  msg "Installing base packages"
-  apt_install xorg feh picom build-essential git curl wget unzip ca-certificates \
-    libx11-dev libxft-dev libxinerama-dev \
-    zram-tools fish lxappearance thunar thunar-volman gvfs gvfs-backends gvfs-fuse \
-    gtk2-engines-murrine adwaita-icon-theme-full papirus-icon-theme \
-    fastfetch libnotify-bin imagemagick maim slop xclip alsa-utils brightnessctl
-}
+# ── Browser Auswahl
+BROWSERS=$(dialog --checklist "Wähle Browser zur Installation:" 15 60 5 \
+1 "Firefox ESR" on \
+2 "Brave" off \
+3 "Chromium" off \
+4 "Zen Browser" off \
+5 "Google Chrome" off 3>&1 1>&2 2>&3)
 
-install_gpu() {
-  msg "GPU driver selection"
-  echo "1) NVIDIA"
-  echo "2) AMD"
-  echo "3) Skip"
-  read -rp "→ " gpu_choice
-  case "${gpu_choice,,}" in
-    1|"nvidia") apt_install firmware-misc-nonfree "linux-headers-$(uname -r)" nvidia-driver nvidia-settings vulkan-tools ;;
-    2|"amd")     apt_install firmware-linux-nonfree "linux-headers-$(uname -r)" mesa-vulkan-drivers vulkan-tools libvulkan1 radeontop ;;
-    *)           warn "Skipping GPU drivers." ;;
+clear
+echo "Installiere ausgewählte Browser ..."
+
+for choice in $BROWSERS; do
+  case $choice in
+    1) sudo apt install -y firefox-esr ;;
+    2) sudo apt install -y apt-transport-https curl; \
+       curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
+       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
+       sudo apt update && sudo apt install -y brave-browser ;;
+    3) sudo apt install -y chromium ;;
+    4) echo "Zen-Browser installieren ..."; \
+       wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb ;;
+    5) echo "Google Chrome installieren ..."; \
+       wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb ;;
   esac
-}
+done
 
-# ---------- NEW: Modifier Key Selection ----------
-choose_modkey() {
-  msg "Choose your DWM modifier key (for keyboard shortcuts)"
-  echo "1) Super / Windows key (real hardware)"
-  echo "2) Alt key (safe for VMs / noVNC)"
-  read -rp "→ " mod_choice
-  case "$mod_choice" in
-    1|"super"|"Super") DWM_MODKEY="Mod4Mask" ;;
-    2|"alt"|"Alt")     DWM_MODKEY="Mod1Mask" ;;
-    *)                 DWM_MODKEY="Mod4Mask" ;;
-  esac
-  echo "Selected: $DWM_MODKEY"
-  export DWM_MODKEY
-}
+# ── Base Packages
+sudo apt install -y xorg xinit dwm dmenu picom alacritty fonts-nerd-fonts \
+  fish htop tmux neofetch git build-essential feh \
+  pipewire wireplumber pipewire-audio pipewire-pulse \
+  timeshift grub-btrfs timeshift-autosnap
 
-setup_zram() {
-  msg "Configuring ZRAM"
-  sudo systemctl enable --now zramswap.service
-  sudo sed -i 's/^#*ALGO=.*/ALGO=zstd/' /etc/default/zramswap
-  sudo sed -i 's/^#*PERCENT=.*/PERCENT=50/' /etc/default/zramswap
-}
+# ── Wallpaper & Config
+mkdir -p ~/.config/dwm
+if [ -f "./wallpaper.png" ]; then
+  cp ./wallpaper.png ~/.config/dwm/
+fi
 
-install_fonts() {
-  msg "Installing JetBrainsMono Nerd Font"
-  ensure_dir "$HOME_DIR/.local/share/fonts/nerd"
-  cd "$HOME_DIR/.local/share/fonts/nerd"
-  wget -q https://github.com/ryanoasis/nerd-fonts/releases/download/v3.2.1/JetBrainsMono.zip -O JetBrainsMono.zip
-  unzip -o JetBrainsMono.zip >/dev/null 2>&1 || true
-  fc-cache -fv >/dev/null 2>&1
-}
-
-setup_alacritty() {
-  msg "Configuring Alacritty"
-  apt_install alacritty
-  ensure_dir "$HOME_DIR/.config/alacritty"
-  cat > "$HOME_DIR/.config/alacritty/alacritty.toml" <<'EOF'
-[window]
-opacity = 0.85
-decorations = "none"
-padding = { x = 8, y = 6 }
-
-[font]
-normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
-size = 11.0
-
-[colors.primary]
-background = "0x0a0a0a"
-foreground = "0xcccccc"
+# ── .xinitrc → Autostart DWM
+cat > ~/.xinitrc <<'EOF'
+#!/bin/bash
+xrandr --output "$(xrandr | awk '/ connected/{print $1;exit}')" --auto
+feh --bg-fill ~/.config/dwm/wallpaper.png &
+picom --config ~/.config/dwm/picom.conf &
+exec dwm
 EOF
-}
+chmod +x ~/.xinitrc
 
-setup_picom() {
-  msg "Creating Picom config"
-  cat > "$HOME_DIR/.config/picom.conf" <<EOF
-backend = "${PICOM_BACKEND}";
+# ── Picom config (transparency)
+mkdir -p ~/.config/dwm
+cat > ~/.config/dwm/picom.conf <<'EOF'
+backend = "glx";
 vsync = true;
+corner-radius = 12;
+opacity-rule = [
+  "90:class_g = 'Alacritty'"
+];
 shadow = true;
-shadow-radius = 12;
-shadow-color = "#00ff99";
-shadow-opacity = 0.35;
-blur-method = "dual_kawase";
-blur-strength = 5;
-inactive-opacity = 0.85;
-active-opacity = 1.0;
+fading = true;
 EOF
-}
 
-build_suckless() {
-  msg "Building DWM / dmenu / slstatus"
-  for d in "$HOME_DIR/.config/dwm" "$HOME_DIR/.config/dmenu" "$HOME_DIR/.config/slstatus"; do
-    [ -d "$d" ] && backup_dir "$d"
-  done
-
-  for repo in dwm dmenu slstatus; do
-    local dir="$HOME_DIR/.config/$repo"
-    ensure_dir "$dir"
-    if [ ! -d "$dir/.git" ]; then
-      git clone https://git.suckless.org/$repo "$dir"
-    fi
-    cd "$dir"
-    cp -f config.def.h config.h 2>/dev/null || true
-    [ "$repo" = "dwm" ] && {
-      sed -i "s|#define MODKEY.*|#define MODKEY ${DWM_MODKEY:-Mod4Mask}|" config.h
-      sed -i 's|"st"|"alacritty"|g' config.h
-      awk '/static Key keys/ {print; print "    { MODKEY, XK_Return, spawn, SHCMD(\"alacritty\") },\n    { MODKEY, XK_t, spawn, SHCMD(\"thunar\") }"; next}1' config.h > tmp && mv tmp config.h
-    }
-    make clean all
-  done
-}
-
-terminal_fallback_vm() {
-  msg "Checking Alacritty availability"
-  local term="alacritty"
-  if ! alacritty --version >/dev/null 2>&1; then
-    warn "Alacritty not working — installing xfce4-terminal"
-    apt_install xfce4-terminal
-    term="xfce4-terminal"
-  fi
-  sed -i "s|\"st\"|\"$term\"|g" "$HOME_DIR/.config/dwm/config.h" || true
-  sed -i "s|\"alacritty\"|\"$term\"|g" "$HOME_DIR/.config/dwm/config.h" || true
-  (cd "$HOME_DIR/.config/dwm" && make clean all)
-}
-
-setup_autostart() {
-  msg "Setting up autostart + .xinitrc"
-  mkdir -p "$HOME_DIR/.dwm"
-  cat > "$HOME_DIR/.dwm/autostart.sh" <<'EOF'
-#!/bin/bash
-xsetroot -solid black &
-(sleep 2 && feh --bg-scale /usr/share/backgrounds/wallpaper.png) &
-picom --experimental-backends --config ~/.config/picom.conf &
-~/.config/slstatus/slstatus &
+# ── Alacritty config
+mkdir -p ~/.config/alacritty
+cat > ~/.config/alacritty/alacritty.yml <<'EOF'
+window:
+  opacity: 0.9
+  decorations: full
+  padding: {x: 10, y: 10}
+font:
+  normal:
+    family: "JetBrainsMono Nerd Font"
+  size: 12
+colors:
+  primary:
+    background: "0x0f111a"
+    foreground: "0xc5c8c6"
+  cursor:
+    text: "0x000000"
+    cursor: "0xffffff"
 EOF
-  chmod +x "$HOME_DIR/.dwm/autostart.sh"
-  cat > "$HOME_DIR/.xinitrc" <<'EOF'
-#!/bin/bash
-~/.dwm/autostart.sh &
-exec ~/.config/dwm/dwm
-EOF
-  chmod +x "$HOME_DIR/.xinitrc"
-}
 
-setup_fish() {
-  msg "Fish auto startx setup"
-  sudo chsh -s /usr/bin/fish "$REAL_USER"
-  mkdir -p "$HOME_DIR/.config/fish"
-  cat > "$HOME_DIR/.config/fish/config.fish" <<'EOF'
-set user (whoami)
-set host (hostname)
-set uptime_now (uptime -p | sed 's/up //')
-set_color cyan
-echo "───────────────────────────────────────────────"
-echo "🐧 Welcome, $user@$host"
-echo "🕒 Uptime: $uptime_now"
-set_color normal
-if test -z "$DISPLAY" ; and test (tty) = "/dev/tty1"
-  echo "🎨 Starting DWM..."
-  exec startx
-end
-EOF
-}
+# ── Fish Shell default
+chsh -s /usr/bin/fish
 
-verify_build() {
-  msg "Verifying DWM components"
-  for bin in "$HOME_DIR/.config/dwm/dwm" "$HOME_DIR/.config/dmenu/dmenu_run" "$HOME_DIR/.config/slstatus/slstatus"; do
-    [ -x "$bin" ] && echo "✅ $(basename "$bin") OK" || echo "❌ $(basename "$bin") missing"
-  done
-}
+# ── DWM Config
+sudo rm -rf /usr/local/src/dwm
+sudo git clone https://git.suckless.org/dwm /usr/local/src/dwm
+cd /usr/local/src/dwm
+sudo make clean install
 
-# ---------- Main ----------
-detect_env
-install_base
-install_gpu
-choose_modkey
-setup_zram
-install_fonts
-setup_alacritty
-setup_picom
-build_suckless
-terminal_fallback_vm
-setup_autostart
-setup_fish
-verify_build
+# ── slstatus (optional)
+sudo git clone https://git.suckless.org/slstatus /usr/local/src/slstatus
+cd /usr/local/src/slstatus
+sudo make clean install
 
-echo "───────────────────────────────────────────────"
-ok "DWM Nerd OS Deluxe v10.2 installed."
-echo "💾 Log: $LOG"
-echo "Reboot → login on TTY1 → Fish starts DWM automatically."
-echo "───────────────────────────────────────────────"
+# ── Start-Hinweis
+echo
+echo "✅ Installation abgeschlossen!"
+echo "Starte DWM mit:  startx"
+echo "🧠 Tipp: Super + Return öffnet Alacritty (transparent)."
+echo "🧩 Fish-Shell ist aktiv. Wallpaper wird automatisch gesetzt."
