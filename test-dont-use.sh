@@ -41,9 +41,9 @@ for b in $BROWSERS; do
   case $b in
     1) sudo apt install -y firefox-esr;;
     2) sudo apt install -y apt-transport-https curl; \
-      curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
-      echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
-      sudo apt update && sudo apt install -y brave-browser;;
+       curl -fsSLo /usr/share/keyrings/brave-browser-archive-keyring.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
+       echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
+       sudo apt update && sudo apt install -y brave-browser;;
     3) sudo apt install -y chromium;;
     4) wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb;;
     5) wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb;;
@@ -57,15 +57,15 @@ for x in $EXTRAS; do
   case $x in
     1) sudo apt install -y obs-studio;;
     2) sudo apt install -y apt-transport-https curl gpg; \
-      curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | sudo gpg --dearmor -o /usr/share/keyrings/vscodium.gpg; \
-      echo "deb [signed-by=/usr/share/keyrings/vscodium.gpg] https://download.vscodium.com/debs vscodium main" | sudo tee /etc/apt/sources.list.d/vscodium.list; \
-      sudo apt update && sudo apt install -y codium;;
+       curl -fsSL https://gitlab.com/paulcarroty/vscodium-deb-rpm-repo/raw/master/pub.gpg | sudo gpg --dearmor -o /usr/share/keyrings/vscodium.gpg; \
+       echo "deb [signed-by=/usr/share/keyrings/vscodium.gpg] https://download.vscodium.com/debs vscodium main" | sudo tee /etc/apt/sources.list.d/vscodium.list; \
+       sudo apt update && sudo apt install -y codium;;
     3) sudo apt install -y gimp;; 4) sudo apt install -y audacity;; 5) sudo apt install -y blender;;
     6) sudo sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
-      sudo dpkg --add-architecture i386; wget -O /tmp/valve.gpg https://repo.steampowered.com/steam/archive/stable/steam.gpg; \
-      sudo install -Dm644 /tmp/valve.gpg /etc/apt/trusted.gpg.d/steam.gpg; \
-      echo "deb [arch=amd64,i386 signed-by=/etc/apt/trusted.gpg.d/steam.gpg] https://repo.steampowered.com/steam/ stable steam" | sudo tee /etc/apt/sources.list.d/steam.list; \
-      sudo apt update && sudo apt install -y steam-launcher;;
+       sudo dpkg --add-architecture i386; wget -O /tmp/valve.gpg https://repo.steampowered.com/steam/archive/stable/steam.gpg; \
+       sudo install -Dm644 /tmp/valve.gpg /etc/apt/trusted.gpg.d/steam.gpg; \
+       echo "deb [arch=amd64,i386 signed-by=/etc/apt/trusted.gpg.d/steam.gpg] https://repo.steampowered.com/steam/ stable steam" | sudo tee /etc/apt/sources.list.d/steam.list; \
+       sudo apt update && sudo apt install -y steam-launcher;;
     7) sudo apt install -y lutris;; 8) sudo apt install -y virtualbox;;
   esac
 done
@@ -74,6 +74,9 @@ done
 sudo apt install -y xorg xinit picom alacritty fish btop fzf eza bat ripgrep fastfetch feh \
 pipewire wireplumber pipewire-pulse zram-tools variety arc-theme papirus-icon-theme tlp preload jq xclip
 sudo systemctl enable --now tlp.service || true
+
+# ── X11-Dev-Pakete (fix für Xlib.h)
+sudo apt install -y libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
 
 # ── Timeshift optional
 if dialog --yesno "Timeshift installieren (Backup-Tool)?" 8 45; then
@@ -90,7 +93,7 @@ sudo systemctl enable --now zramswap.service
 FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
 mkdir -p ~/.local/share/fonts; wget -q $FONT_URL -O /tmp/JBM.zip; unzip -o /tmp/JBM.zip -d ~/.local/share/fonts >/dev/null; fc-cache -fv >/dev/null
 
-# ── .xinitrc + Wallpaper
+# ── .xinitrc
 mkdir -p ~/.config/dwm; [ -f ./wallpaper.png ] && cp ./wallpaper.png ~/.config/dwm/
 cat > ~/.xinitrc <<EOF
 #!/bin/bash
@@ -132,9 +135,7 @@ function fish_greeting
   echo "✨ Tip: F2 → fastfetch | F3 → btop | exit → logout"
   set_color normal
 end
-# Alias exa → eza
 alias exa="eza"
-# Auto-Start DWM auf TTY1
 if test -z "$DISPLAY" and test (tty) = "/dev/tty1"
   echo "🚀 Starting DWM..."
   exec startx
@@ -171,6 +172,6 @@ echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 
 echo; echo "✅ Installation abgeschlossen!"
 echo "🧠 Automatischer Start in DWM nach Login auf TTY1"
-echo "⌨️ Tastaturlayout: $XKB"
+echo "⌨️ Layout: $XKB"
 echo "🎨 DWM + Tools → ~/.config/dwm/bin"
-echo "🔥 eza statt exa mit Alias, Patches + Debian-Tweaks aktiv!"
+echo "🔥 X11-Dev-Fix, eza Alias, Patches und Tweaks aktiv!"
