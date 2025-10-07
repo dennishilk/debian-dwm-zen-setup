@@ -68,19 +68,22 @@ for choice in $BROWSERS; do
 done
 
 # ── Base Packages
-sudo apt install -y xorg xinit dwm dmenu picom alacritty fonts-nerd-fonts \
-  fish htop tmux neofetch git build-essential feh \
+sudo apt install -y xorg xinit dwm dmenu picom alacritty \
+  fish htop tmux fastfetch git build-essential feh \
   pipewire wireplumber pipewire-audio pipewire-pulse \
-  timeshift grub-btrfs timeshift-autosnap zram-tools
+  timeshift zram-tools
 
-# ── ZRAM Configuration
-echo "💾 Aktiviere ZRAM (50% RAM, LZ4-Kompression)"
-sudo bash -c 'cat > /etc/default/zramswap <<EOF
-PERCENT=50
-ALGO=lz4
-EOF'
-sudo systemctl enable zramswap.service
-sudo systemctl start zramswap.service
+# ── JetBrainsMono Nerd Font (manuell)
+mkdir -p ~/.local/share/fonts
+wget -q https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip -O /tmp/JetBrainsMono.zip
+unzip -o /tmp/JetBrainsMono.zip -d ~/.local/share/fonts >/dev/null
+fc-cache -fv >/dev/null
+echo "🧩 Nerd Font installiert (JetBrainsMono)"
+
+# ── ZRAM aktivieren
+sudo systemctl enable --now zramswap.service
+sudo sed -i 's/^#\?ALGO=.*/ALGO=zstd/' /etc/default/zramswap
+sudo sed -i 's/^#\?PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 
 # ── Wallpaper & Config
 mkdir -p ~/.config/dwm
@@ -145,9 +148,6 @@ fi
 # ── Fish Config (Nerd Dashboard)
 mkdir -p ~/.config/fish
 cat > ~/.config/fish/config.fish <<'EOF'
-# ─────────────────────────────────────────────
-#  Fish Startup Dashboard by Dennis Hilk
-# ─────────────────────────────────────────────
 function fish_greeting
     set_color cyan
     echo "🐧  "(lsb_release -ds)" "(uname -m)
@@ -157,7 +157,6 @@ function fish_greeting
     echo "⚙️  Kernel:" (uname -r)
     echo "⏱️  Current uptime:" (uptime -p | sed 's/up //')
 
-    # Gesamt-Uptime speichern
     set uptime_seconds (awk '{print int($1)}' /proc/uptime)
     set saved_total (cat /var/lib/system-uptime.db ^/dev/null 2>/dev/null; or echo 0)
     set new_total (math "$uptime_seconds + $saved_total")
@@ -172,23 +171,15 @@ function fish_greeting
     echo "🎮  GPU:" (lspci | grep -E "VGA|3D" | awk -F ': ' '{print $3}' | head -n1)
     echo "💽  Disk:" (df -h / | awk 'NR==2 {print $5 " of " $2}')
     echo "💾  RAM:" (free -h | awk '/Mem/ {print $3 " / " $2}')
+    echo "🧮  ZRAM:" (systemctl is-active zramswap.service)
     echo "🔊  Audio: PipeWire active"
-
-    # ZRAM Info
-    if grep -q "/dev/zram" /proc/swaps
-        set zsize (grep MemTotal /proc/meminfo | awk '{printf "%.0f", $2/2048}')
-        echo "🧠  ZRAM: active (≈"$zsize" MB compressed swap)"
-    else
-        echo "🧠  ZRAM: not active"
-    end
-
     if test -d /timeshift
-        echo "💾  Timeshift: enabled (autosnap)"
+        echo "💾  Timeshift: enabled"
     else
         echo "💾  Timeshift: not found"
     end
     echo "──────────────────────────────────────────────"
-    echo "✨  Tip: F2 → neofetch | F3 → htop | exit → logout"
+    echo "✨  Tip: F2 → fastfetch | F3 → htop | exit → logout"
     set_color normal
 end
 EOF
@@ -204,5 +195,5 @@ cd /usr/local/src/slstatus && sudo make clean install
 echo
 echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
-echo "🧠 Super + Return = Alacritty (mit ZRAM & Total System Uptime Dashboard)"
-echo "🎨 Wallpaper, Transparenz, PipeWire, Fish & Timeshift aktiv."
+echo "🧠 Super + Return = Alacritty (mit System-Dashboard)"
+echo "🎨 Wallpaper, Transparenz, PipeWire, Fish & ZRAM aktiv."
