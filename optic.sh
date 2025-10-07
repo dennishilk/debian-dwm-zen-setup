@@ -108,7 +108,7 @@ configuration {
 EOF
 
 # Extra Tools
-sudo apt install -y pavucontrol pwvucontrol gamemode mangohud powertop
+sudo apt install -y pavucontrol gamemode mangohud powertop
 
 # Autostart daemons
 mkdir -p ~/.config/dwm/autostart
