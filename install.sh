@@ -1,18 +1,16 @@
 #!/usr/bin/env bash
 # ────────────────────────────────────────────────
 # Debian 13 DWM Ultimate Setup by Dennis Hilk
-# Final version – local DWM build in ~/.config/dwm
+# Fixed: all actions in user context, safe local DWM build
 # ────────────────────────────────────────────────
 
 set -e
 
-# ── Root check
 if [[ $EUID -ne 0 ]]; then
   echo "Bitte mit sudo oder als root ausführen."
   exit 1
 fi
 
-# ── Ensure dialog exists
 if ! command -v dialog &>/dev/null; then
   echo "→ Installiere fehlendes Paket: dialog"
   apt update -y && apt install -y dialog
@@ -53,12 +51,10 @@ case $CHOICE in
   echo -e "${YELLOW}→ Installiere Fish Shell...${RESET}"
   apt install -y fish fastfetch
 
-  # benötigte Ordner für Fish
   sudo -u "$SUDO_USER" mkdir -p "$USER_HOME/.config/fish/functions" \
                               "$USER_HOME/.config/fish/conf.d" \
                               "$USER_HOME/.config/fish/completions"
 
-  # config.fish schreiben
   sudo -u "$SUDO_USER" bash -c "cat > '$USER_HOME/.config/fish/config.fish' <<'EOF'
 fastfetch
 echo ''
@@ -70,7 +66,6 @@ set_color yellow
 echo 'System gestartet seit:' (who -b | awk '{print \$3,\$4}')
 set_color normal
 
-# DWM Autostart (nur auf TTY1)
 if test -z '\$DISPLAY'
     and test (tty) = '/dev/tty1'
     echo ''
@@ -82,7 +77,7 @@ EOF"
 
   chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.config/fish"
   chsh -s /usr/bin/fish "$SUDO_USER"
-  echo -e "${GREEN}✔ Fish Shell mit Autostart und korrekten Berechtigungen eingerichtet.${RESET}"
+  echo -e "${GREEN}✔ Fish Shell mit Autostart eingerichtet.${RESET}"
   read -rp "Weiter mit Enter..."
   ;;
 # ────────────────────────────────────────────────
@@ -115,29 +110,28 @@ EOF"
   ;;
 # ────────────────────────────────────────────────
 5)
-  echo -e "${YELLOW}→ Installiere DWM und Tools lokal unter ~/.config/dwm...${RESET}"
+  echo -e "${YELLOW}→ Installiere DWM lokal unter ~/.config/dwm (Benutzerrechte)...${RESET}"
   apt install -y build-essential libx11-dev libxft-dev libxinerama-dev feh xinit alacritty git curl unzip
 
-  mkdir -p "$USER_HOME/.config/dwm"
+  sudo -u "$SUDO_USER" mkdir -p "$USER_HOME/.config/dwm"
   cd "$USER_HOME/.config/dwm"
 
-  # DWM klonen und lokal bauen
-  if [[ ! -d dwm ]]; then
-    sudo -u "$SUDO_USER" git clone https://git.suckless.org/dwm
+  if [[ ! -d "$USER_HOME/.config/dwm/dwm" ]]; then
+    sudo -u "$SUDO_USER" git clone https://git.suckless.org/dwm "$USER_HOME/.config/dwm/dwm"
   fi
-  cd dwm
-  sudo -u "$SUDO_USER" make clean all
-  cd ..
 
-  # Xinitrc lokal anpassen
+  cd "$USER_HOME/.config/dwm/dwm"
+  sudo -u "$SUDO_USER" make clean all
+
+  # Lokale Startdatei
   echo 'exec ~/.config/dwm/dwm/dwm' > "$USER_HOME/.xinitrc"
 
-  # Wallpaper automatisch aktivieren
+  # Wallpaper aus Script-Ordner kopieren
   WALLPAPER_SRC="$SCRIPT_DIR/wallpaper.png"
   WALLPAPER_DST="$USER_HOME/.config/dwm/wallpaper.png"
+
   if [[ -f "$WALLPAPER_SRC" ]]; then
-    cp "$WALLPAPER_SRC" "$WALLPAPER_DST"
-    chown "$SUDO_USER:$SUDO_USER" "$WALLPAPER_DST"
+    sudo -u "$SUDO_USER" cp "$WALLPAPER_SRC" "$WALLPAPER_DST"
     echo "feh --bg-scale $WALLPAPER_DST" > "$USER_HOME/.fehbg"
     chmod +x "$USER_HOME/.fehbg"
     if ! grep -q ".fehbg" "$USER_HOME/.xinitrc"; then
@@ -149,7 +143,7 @@ EOF"
   fi
 
   chown -R "$SUDO_USER:$SUDO_USER" "$USER_HOME/.config/dwm" "$USER_HOME/.xinitrc"
-  echo -e "${GREEN}✔ DWM lokal installiert unter ~/.config/dwm${RESET}"
+  echo -e "${GREEN}✔ DWM vollständig installiert und lokal eingerichtet.${RESET}"
   read -rp "Weiter mit Enter..."
   ;;
 # ────────────────────────────────────────────────
