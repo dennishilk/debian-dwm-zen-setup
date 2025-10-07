@@ -123,25 +123,40 @@ done
 sed -i 's/Mod1Mask/Mod4Mask/g' "$BASE_DIR/dwm/config.def.h" || true
 sed -i 's|"st", NULL|"alacritty", NULL|' "$BASE_DIR/dwm/config.def.h" || true
 
-# Slstatus minimal (ohne Netz & Akku)
-cat > "$BASE_DIR/slstatus/config.def.h" <<'EOF'
+# ───────────────────────────────────────────────
+# 🧩 Slstatus – garantierter Minimal-Build (kein Netz / Akku)
+# ───────────────────────────────────────────────
+SLDIR="$BASE_DIR/slstatus"
+cd "$SLDIR"
+
+# Alte Reste oder gepullte Configs löschen
+rm -f config.h config.def.h
+
+cat > config.def.h <<'EOF'
 #include <stdio.h>
 #include <time.h>
 #include "slstatus.h"
 #include "util.h"
+
+/* Refresh-Intervall in Sekunden */
 static const unsigned int interval = 2;
 static const char unknown_str[] = "n/a";
 #define MAXLEN 2048
+
+/* ⚙️ Nur CPU, RAM, Temp, Uptime & Zeit */
 static const struct arg args[] = {
   { cpu_perc, "🧠 %3s%% ", NULL },
-  { cpu_freq, "⚙️ %3sGHz ", NULL },
+  { cpu_freq, "⚙️ %3s GHz ", NULL },
   { ram_perc, "💾 %2s%% ", NULL },
-  { temp, "🌡️ %2s°C ", "/sys/class/thermal/thermal_zone0/temp" },
-  { uptime, "⏱️ %s ", NULL },
+  { temp,     "🌡️ %2s °C ", "/sys/class/thermal/thermal_zone0/temp" },
+  { uptime,   "⏱️ %s ", NULL },
   { datetime, "📅 %s", "%H:%M | %d.%m.%Y" },
 };
 EOF
-rm -f "$BASE_DIR/slstatus/config.h" || true
+
+# Compile garantiert ohne sudo, lokal in ~/.config/dwm/bin
+make clean install || { echo "❌ Slstatus-Build fehlgeschlagen"; exit 1; }
+cd ~
 
 # Build & Install (lokal, ohne sudo)
 make -C "$BASE_DIR/dwm" clean install
