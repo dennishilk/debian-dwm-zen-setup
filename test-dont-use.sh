@@ -18,7 +18,7 @@ if [ "$ID" != "debian" ] || [[ "$VERSION_ID" != "13" && "$VERSION_CODENAME" != "
 fi
 echo "✅ Debian 13 erkannt – Installation startet ..."
 
-sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip
+sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc
 
 # ── Zen-Kernel
 if dialog --yesno "Zen-Kernel installieren?" 8 40; then
@@ -120,25 +120,71 @@ colors:
   cursor:
     text: "0x000000"
     cursor: "0xffffff"
+shell:
+  program: /usr/bin/fish
 EOF
 
 # ── Fish Shell default
 chsh -s /usr/bin/fish
 
-# ── DWM Config
+# ── Total System Uptime Tracker
+sudo mkdir -p /var/lib
+if [ ! -f /var/lib/system-uptime.db ]; then
+  echo "0" | sudo tee /var/lib/system-uptime.db >/dev/null
+fi
+
+# ── Fish Config (Nerd Dashboard)
+mkdir -p ~/.config/fish
+cat > ~/.config/fish/config.fish <<'EOF'
+# ─────────────────────────────────────────────
+#  Fish Startup Dashboard by Dennis Hilk
+# ─────────────────────────────────────────────
+function fish_greeting
+    set_color cyan
+    echo "🐧  "(lsb_release -ds)" "(uname -m)
+    echo "──────────────────────────────────────────────"
+    set_color green
+    echo "🧠  Host:" (hostname)
+    echo "⚙️  Kernel:" (uname -r)
+    echo "⏱️  Current uptime:" (uptime -p | sed 's/up //')
+
+    # Berechne Gesamt-Uptime in Tagen
+    set uptime_seconds (awk '{print int($1)}' /proc/uptime)
+    set saved_total (cat /var/lib/system-uptime.db ^/dev/null 2>/dev/null; or echo 0)
+    set new_total (math "$uptime_seconds + $saved_total")
+    echo $new_total | sudo tee /var/lib/system-uptime.db >/dev/null
+    set total_days (math "scale=2; $new_total / 86400")
+    echo "🕓  Total system uptime:" $total_days "days"
+
+    echo "📦  Packages:" (dpkg -l | grep '^ii' | wc -l)" (apt)"
+    echo "💻  Shell:" (fish --version | awk '{print $3}')
+    echo "🧩  WM: dwm"
+    echo "🖥️  CPU:" (lscpu | awk -F: '/Model name/ {print $2}' | sed 's/^ *//')
+    echo "🎮  GPU:" (lspci | grep -E "VGA|3D" | awk -F ': ' '{print $3}' | head -n1)
+    echo "💽  Disk:" (df -h / | awk 'NR==2 {print $5 " of " $2}')
+    echo "💾  RAM:" (free -h | awk '/Mem/ {print $3 " / " $2}')
+    echo "🔊  Audio: PipeWire active"
+    if test -d /timeshift
+        echo "💾  Timeshift: enabled (autosnap)"
+    else
+        echo "💾  Timeshift: not found"
+    end
+    echo "──────────────────────────────────────────────"
+    echo "✨  Tip: F2 → neofetch | F3 → htop | exit → logout"
+    set_color normal
+end
+EOF
+
+# ── DWM + slstatus Build
 sudo rm -rf /usr/local/src/dwm
 sudo git clone https://git.suckless.org/dwm /usr/local/src/dwm
-cd /usr/local/src/dwm
-sudo make clean install
-
-# ── slstatus (optional)
+cd /usr/local/src/dwm && sudo make clean install
 sudo git clone https://git.suckless.org/slstatus /usr/local/src/slstatus
-cd /usr/local/src/slstatus
-sudo make clean install
+cd /usr/local/src/slstatus && sudo make clean install
 
-# ── Start-Hinweis
+# ── Done
 echo
 echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
-echo "🧠 Tipp: Super + Return öffnet Alacritty (transparent)."
-echo "🧩 Fish-Shell ist aktiv. Wallpaper wird automatisch gesetzt."
+echo "🧠 Super + Return = Alacritty (mit Total System Uptime Dashboard)"
+echo "🎨 Wallpaper, Transparenz, PipeWire und Fish aktiviert."
