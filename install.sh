@@ -1,134 +1,195 @@
 #!/usr/bin/env bash
+# ────────────────────────────────────────────────
+# Debian 13 DWM Ultimate v8 (by Dennis Hilk)
+# Zen Kernel • GPU Auto Detect • ZRAM • Fish Shell • System Info
+# ────────────────────────────────────────────────
+
 set -euo pipefail
-# ─────────────────────────────────────────────
-# Debian 13 DWM Ultimate v6  –  by Dennis Hilk
-# Clean build without patches, with wallpaper fix
-# ─────────────────────────────────────────────
-abort(){ echo "❌ Fehler: $1" >&2; exit 1; }
 
-# ── nicht als root ausführen
-[ "$EUID" -eq 0 ] && abort "⚠️ Bitte NICHT als root starten!"
-sudo -v || abort "sudo nicht verfügbar oder falsches Passwort."
-# sudo-Keepalive
-while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+GREEN="\033[1;32m"; YELLOW="\033[1;33m"; RESET="\033[0m"
+CONFIG_DIR="$HOME/.config/dwm"
+SRC_DIR="$HOME/.local/src"
+SESSION_NAME="dwm"
+WALLPAPER="$CONFIG_DIR/wallpaper.png"
+AUTOSTART_SCRIPT="$CONFIG_DIR/autostart.sh"
 
-# ── Debian-Check
-. /etc/os-release 2>/dev/null || abort "/etc/os-release fehlt."
-[[ "$ID" != "debian" || "$VERSION_CODENAME" != "trixie" ]] && abort "Nur für Debian 13 Trixie!"
-echo "✅ Debian 13 erkannt – Installation startet …"
+echo -e "${GREEN}=== Debian 13 DWM Ultimate v8 Setup (by Dennis Hilk) ===${RESET}"
 
-# ── Grundpakete
-sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc make gcc
-
-# ── Zen-Kernel optional
-if dialog --yesno "Zen-Kernel installieren?" 8 45; then
-  sudo apt install -y linux-image-zen linux-headers-zen || echo "⚠️ Zen-Kernel nicht im Repo."
+if [ "$EUID" -eq 0 ]; then
+  echo "Bitte nicht als root ausführen."; exit 1
 fi
 
-# ── GPU-Treiber
-if dialog --yesno "GPU-Treiber installieren?" 8 45; then
-  if lspci | grep -qi nvidia; then sudo apt install -y nvidia-driver nvidia-kernel-dkms
-  elif lspci | grep -qi amd; then sudo apt install -y firmware-amd-graphics
-  elif lspci | grep -qi intel; then sudo apt install -y i965-driver intel-media-va-driver-non-free
-  fi
-fi
+# ────────────────────────────────────────────────
+# 1. Basis-Pakete
+# ────────────────────────────────────────────────
+echo -e "\n${YELLOW}→ Installiere Systembasis...${RESET}"
+sudo apt update
+sudo apt install -y build-essential git curl wget feh xorg xinit linux-headers-$(uname -r) \
+  libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev \
+  pipewire pipewire-pulse wireplumber fish neofetch zram-tools
 
-# ── Tastaturlayout
-KEYBOARD=$(dialog --menu "Wähle Tastatur-Layout:" 15 60 6 \
-1 "Deutsch (nodeadkeys)" 2 "English (US)" 3 "Français" 4 "Español" 5 "Italiano" 6 "Polski" 3>&1 1>&2 2>&3)
-case $KEYBOARD in
-  1) XKB="de nodeadkeys";; 2) XKB="us";; 3) XKB="fr";; 4) XKB="es";; 5) XKB="it";; 6) XKB="pl";; *) XKB="us";;
-esac
+# ────────────────────────────────────────────────
+# 2. Zen-Kernel
+# ────────────────────────────────────────────────
+echo -e "\n${YELLOW}→ Installiere Zen Kernel...${RESET}"
+sudo apt install -y linux-image-zen linux-headers-zen || {
+  echo "Zen Kernel nicht in Repo – füge Backports hinzu..."
+  echo "deb http://deb.debian.org/debian trixie-backports main contrib non-free non-free-firmware" | \
+    sudo tee /etc/apt/sources.list.d/backports.list
+  sudo apt update
+  sudo apt install -t trixie-backports -y linux-image-zen linux-headers-zen
+}
 
-# ── Browser
-BROWSERS=$(dialog --checklist "Browser installieren:" 15 60 5 \
-1 "Firefox ESR" on 2 "Brave" off 3 "Chromium" off 4 "Zen Browser" off 5 "Chrome" off 3>&1 1>&2 2>&3)
-for b in $BROWSERS; do
-  case $b in
-    1) sudo apt install -y firefox-esr;;
-    2) sudo apt install -y apt-transport-https curl; \
-      curl -fsSLo /usr/share/keyrings/brave.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
-      echo "deb [signed-by=/usr/share/keyrings/brave.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave.list; \
-      sudo apt update && sudo apt install -y brave-browser;;
-    3) sudo apt install -y chromium;;
-    4) wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb;;
-    5) wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb;;
-  esac
-done
-
-# ── Systemtools
-sudo apt install -y xorg xinit picom alacritty fish btop fzf eza bat ripgrep fastfetch feh \
-pipewire wireplumber pipewire-pulse zram-tools variety arc-theme papirus-icon-theme tlp preload jq xclip
-sudo systemctl enable --now tlp.service || true
-sudo apt install -y libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
-
-# ── Fonts
-FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
-mkdir -p ~/.local/share/fonts
-wget -q $FONT_URL -O /tmp/JBM.zip
-unzip -o /tmp/JBM.zip -d ~/.local/share/fonts >/dev/null
-fc-cache -fv >/dev/null
-
-# ── Wallpaper Fix
-mkdir -p ~/.config/dwm
-if [ -f ./wallpaper.png ]; then
-  cp ./wallpaper.png ~/.config/dwm/wallpaper.png
+# ────────────────────────────────────────────────
+# 3. GPU Auto Detect
+# ────────────────────────────────────────────────
+echo -e "\n${YELLOW}→ Erkenne Grafiktreiber...${RESET}"
+GPU=$(lspci | grep -E "VGA|3D" || true)
+if echo "$GPU" | grep -qi "NVIDIA"; then
+  echo -e "${GREEN}NVIDIA GPU erkannt.${RESET}"
+  sudo apt install -y nvidia-driver firmware-misc-nonfree
+elif echo "$GPU" | grep -qi "AMD"; then
+  echo -e "${GREEN}AMD GPU erkannt.${RESET}"
+  sudo apt install -y firmware-amd-graphics mesa-vulkan-drivers vulkan-tools
+elif echo "$GPU" | grep -qi "Intel"; then
+  echo -e "${GREEN}Intel GPU erkannt.${RESET}"
+  sudo apt install -y intel-media-va-driver-non-free mesa-vulkan-drivers vulkan-tools
 else
-  wget -q -O ~/.config/dwm/wallpaper.png https://raw.githubusercontent.com/dennishilk/linux-wallpapers/main/default.png || true
+  echo -e "${YELLOW}Keine GPU erkannt – überspringe.${RESET}"
 fi
 
-# ── .xinitrc + Autostart
-cat > ~/.xinitrc <<EOF
-#!/bin/bash
-export PATH="\$HOME/.config/dwm/bin:\$PATH"
-setxkbmap $XKB &
-xrandr --output "\$(xrandr | awk '/ connected/{print \$1;exit}')" --auto
-feh --bg-fill ~/.config/dwm/wallpaper.png &
-picom --config ~/.config/dwm/picom.conf &
+# ────────────────────────────────────────────────
+# 4. ZRAM
+# ────────────────────────────────────────────────
+echo -e "\n${YELLOW}→ Aktiviere ZRAM...${RESET}"
+sudo tee /etc/default/zram-config >/dev/null <<'EOF'
+ALGO=zstd
+PERCENT=75
+PRIORITY=100
+EOF
+sudo systemctl enable --now zramswap.service
+
+# ────────────────────────────────────────────────
+# 5. DWM / DMENU / ST
+# ────────────────────────────────────────────────
+mkdir -p "$SRC_DIR" "$CONFIG_DIR"
+
+install_from_suckless() {
+  local name=$1; local url=$2
+  local path="$SRC_DIR/$name"
+  echo -e "\n${YELLOW}→ Installiere $name...${RESET}"
+  [ -d "$path" ] || git clone "$url" "$path"
+  cd "$path"
+  sudo make clean install
+}
+
+install_from_suckless "dwm" "https://git.suckless.org/dwm"
+install_from_suckless "dmenu" "https://git.suckless.org/dmenu"
+
+read -rp "Möchtest du st (suckless terminal) installieren? [y/N]: " stinstall
+[[ "$stinstall" =~ ^[Yy]$ ]] && install_from_suckless "st" "https://git.suckless.org/st"
+
+# ────────────────────────────────────────────────
+# 6. Xinit / Autostart
+# ────────────────────────────────────────────────
+cat <<EOF > "$HOME/.xinitrc"
+#!/bin/sh
+xsetroot -cursor_name left_ptr
+bash "$AUTOSTART_SCRIPT" &
 exec dwm
 EOF
-chmod +x ~/.xinitrc
+chmod +x "$HOME/.xinitrc"
 
-# ── Fish Config + Autostart
-sudo mkdir -p /var/lib; echo 0 | sudo tee /var/lib/system-uptime.db >/dev/null
-mkdir -p ~/.config/fish
-cat > ~/.config/fish/config.fish <<'EOF'
-function fish_greeting
- set_color cyan
- echo "🐧 "(lsb_release -ds)" "(uname -m)
- set_color normal
-end
-alias exa="eza"
-# Autostart DWM bei TTY1
-if status is-login
-  if test -z "$DISPLAY" -a (tty) = "/dev/tty1"
-    echo "🚀 Starting DWM..."
-    exec startx -- :0 vt1 >/dev/null 2>&1
-  end
-end
+grep -q "startx" "$HOME/.bash_profile" 2>/dev/null || cat <<'EOF' >> "$HOME/.bash_profile"
+if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
+  startx
+fi
 EOF
-chsh -s /usr/bin/fish
 
-# ── DWM + Tools lokal
-mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
-cd ~/.config/dwm/src
-for r in dwm dmenu slstatus; do
-  git clone https://git.suckless.org/$r
-  cd $r
-  sed -i "s|^PREFIX =.*|PREFIX = \$(HOME)/.config/dwm|" config.mk
-  if [ "$r" = "dwm" ]; then
-    sed -i 's|"st", NULL|"alacritty", NULL|' config.def.h
-    sed -i 's|Mod1Mask|Mod4Mask|' config.def.h
-  fi
-  make clean install
-  cd ..
-done
+# ────────────────────────────────────────────────
+# 7. Fish Shell + Systeminfos
+# ────────────────────────────────────────────────
+echo -e "\n${YELLOW}→ Setze Fish als Standard-Shell...${RESET}"
+sudo chsh -s /usr/bin/fish "$USER"
 
-echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
-echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish >/dev/null 2>&1 || true
+FISH_CONFIG="$HOME/.config/fish/config.fish"
+mkdir -p "$(dirname "$FISH_CONFIG")"
 
-echo
-echo "✅ Fertig!"
-echo "🧠 Automatischer Start von DWM nach Login auf TTY1"
-echo "🎨 Wallpaper: ~/.config/dwm/wallpaper.png"
-echo "🔥 Nur eine Passworteingabe, keine Patches mehr"
+cat <<'EOF' > "$FISH_CONFIG"
+# ────────────────────────────────────────────────
+# Fish Config – Debian 13 DWM Ultimate v8 (by Dennis Hilk)
+# ────────────────────────────────────────────────
+set fish_greeting
+
+# System Info beim Start
+clear
+set_color cyan
+echo "──────────────────────────────"
+echo "  Debian 13 DWM Ultimate v8"
+echo "──────────────────────────────"
+set_color yellow
+echo "OS: "(lsb_release -ds)
+echo "Kernel: "(uname -r)
+echo "Uptime: "(uptime -p)
+echo "Memory: "(free -h | awk '/Mem:/ {print $3 " / " $2}')
+set_color green
+echo "Date: "(date)
+set_color normal
+echo "──────────────────────────────"
+neofetch --color_blocks off --cpu_temp C
+echo "──────────────────────────────"
+EOF
+
+# ────────────────────────────────────────────────
+# 8. Autostart Script
+# ────────────────────────────────────────────────
+cat <<'EOF' > "$AUTOSTART_SCRIPT"
+#!/bin/sh
+# DWM Autostart – Ultimate v8 (Dennis Hilk)
+
+# Hintergrundbild
+feh --bg-fill ~/.config/dwm/wallpaper.png &
+
+# Audio
+pipewire & disown
+pipewire-pulse & disown
+wireplumber & disown
+
+# Terminal Variable
+if command -v alacritty >/dev/null 2>&1; then
+  export TERMINAL="alacritty"
+else
+  export TERMINAL="x-terminal-emulator"
+fi
+
+# Systeminfos im Log
+echo "[DWM] gestartet am $(date)" >> ~/.config/dwm/dwm.log
+EOF
+chmod +x "$AUTOSTART_SCRIPT"
+
+# ────────────────────────────────────────────────
+# 9. XSession Datei
+# ────────────────────────────────────────────────
+sudo mkdir -p /usr/share/xsessions
+sudo tee /usr/share/xsessions/dwm.desktop >/dev/null <<EOF
+[Desktop Entry]
+Encoding=UTF-8
+Name=DWM Ultimate v8
+Comment=Dynamic Window Manager (by Dennis Hilk)
+Exec=/usr/bin/startx
+Type=XSession
+EOF
+
+# ────────────────────────────────────────────────
+# 10. Wallpaper Fallback
+# ────────────────────────────────────────────────
+if [ ! -f "$WALLPAPER" ]; then
+  wget -q -O "$WALLPAPER" https://upload.wikimedia.org/wikipedia/commons/3/3a/Tux.svg || true
+fi
+
+# ────────────────────────────────────────────────
+# 11. Abschluss
+# ────────────────────────────────────────────────
+echo -e "\n${GREEN}✅ Installation abgeschlossen!${RESET}"
+echo -e "Fish Shell aktiv, Zen-Kernel installiert, GPU & ZRAM konfiguriert."
+echo -e "Starte dein System neu und genieße DWM Ultimate v8."
