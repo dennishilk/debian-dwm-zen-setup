@@ -1,406 +1,134 @@
-#!/bin/bash
+#!/usr/bin/env bash
+set -euo pipefail
+# ─────────────────────────────────────────────
+# Debian 13 DWM Ultimate v6  –  by Dennis Hilk
+# Clean build without patches, with wallpaper fix
+# ─────────────────────────────────────────────
+abort(){ echo "❌ Fehler: $1" >&2; exit 1; }
 
-# echo "🐧 Debian 13 DWM Ultimate v7.3.3 – by Dennis Hilk"
+# ── nicht als root ausführen
+[ "$EUID" -eq 0 ] && abort "⚠️ Bitte NICHT als root starten!"
+sudo -v || abort "sudo nicht verfügbar oder falsches Passwort."
+# sudo-Keepalive
+while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
 
-set -e
+# ── Debian-Check
+. /etc/os-release 2>/dev/null || abort "/etc/os-release fehlt."
+[[ "$ID" != "debian" || "$VERSION_CODENAME" != "trixie" ]] && abort "Nur für Debian 13 Trixie!"
+echo "✅ Debian 13 erkannt – Installation startet …"
 
-# Command line options
-ONLY_CONFIG=false
-EXPORT_PACKAGES=false
+# ── Grundpakete
+sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc make gcc
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --only-config)
-            ONLY_CONFIG=true
-            shift
-            ;;
-        --export-packages)
-            EXPORT_PACKAGES=true
-            shift
-            ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "  --only-config      Only copy config files (skip packages and external tools)"
-            echo "  --export-packages  Export package lists for different distros and exit"
-            echo "  --help            Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            echo "Use --help for usage information"
-            exit 1
-            ;;
-    esac
-done
+# ── Zen-Kernel optional
+if dialog --yesno "Zen-Kernel installieren?" 8 45; then
+  sudo apt install -y linux-image-zen linux-headers-zen || echo "⚠️ Zen-Kernel nicht im Repo."
+fi
 
-# Paths
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.config/suckless"
-TEMP_DIR="/tmp/dwm_$$"
-LOG_FILE="$HOME/dwm-install.log"
+# ── GPU-Treiber
+if dialog --yesno "GPU-Treiber installieren?" 8 45; then
+  if lspci | grep -qi nvidia; then sudo apt install -y nvidia-driver nvidia-kernel-dkms
+  elif lspci | grep -qi amd; then sudo apt install -y firmware-amd-graphics
+  elif lspci | grep -qi intel; then sudo apt install -y i965-driver intel-media-va-driver-non-free
+  fi
+fi
 
-# Logging and cleanup
-exec > >(tee -a "$LOG_FILE") 2>&1
-trap "rm -rf $TEMP_DIR" EXIT
-
-# ───────────────────────────────────────────────
-# 1️⃣ Tastaturlayout-Auswahl (robust & persistent)
-# ───────────────────────────────────────────────
+# ── Tastaturlayout
 KEYBOARD=$(dialog --menu "Wähle Tastatur-Layout:" 15 60 6 \
 1 "Deutsch (nodeadkeys)" 2 "English (US)" 3 "Français" 4 "Español" 5 "Italiano" 6 "Polski" 3>&1 1>&2 2>&3)
-
 case $KEYBOARD in
-  1) XKB_LAYOUT="de"; XKB_VARIANT="nodeadkeys";;
-  2) XKB_LAYOUT="us"; XKB_VARIANT="";;
-  3) XKB_LAYOUT="fr"; XKB_VARIANT="";;
-  4) XKB_LAYOUT="es"; XKB_VARIANT="";;
-  5) XKB_LAYOUT="it"; XKB_VARIANT="";;
-  6) XKB_LAYOUT="pl"; XKB_VARIANT="";;
-  *) XKB_LAYOUT="us"; XKB_VARIANT="";;
+  1) XKB="de nodeadkeys";; 2) XKB="us";; 3) XKB="fr";; 4) XKB="es";; 5) XKB="it";; 6) XKB="pl";; *) XKB="us";;
 esac
 
-sudo tee /etc/default/keyboard >/dev/null <<EOF
-XKBLAYOUT="$XKB_LAYOUT"
-XKBVARIANT="$XKB_VARIANT"
-BACKSPACE="guess"
-EOF
-sudo dpkg-reconfigure -f noninteractive keyboard-configuration
-sudo localectl set-x11-keymap "$XKB_LAYOUT" "$XKB_VARIANT"
-
-mkdir -p ~/.config/fish
-touch ~/.config/fish/config.fish ~/.xinitrc
-grep -qxF "setxkbmap $XKB_LAYOUT $XKB_VARIANT &" ~/.xinitrc || echo "setxkbmap $XKB_LAYOUT $XKB_VARIANT &" >> ~/.xinitrc
-grep -qxF "setxkbmap $XKB_LAYOUT $XKB_VARIANT" ~/.config/fish/config.fish || echo "setxkbmap $XKB_LAYOUT $XKB_VARIANT" >> ~/.config/fish/config.fish
-
-# ───────────────────────────────────────────────
-# 2️⃣ Browser-Auswahl
-# ───────────────────────────────────────────────
-BROWSERS=$(dialog --checklist "Wähle Browser zum Installieren:" 18 60 8 \
-1 "Firefox ESR" on 2 "Google Chrome" off 3 "Brave Browser" off 4 "Ungoogled Chromium" off 3>&1 1>&2 2>&3)
-clear
-for B in $BROWSERS; do
-  case $B in
+# ── Browser
+BROWSERS=$(dialog --checklist "Browser installieren:" 15 60 5 \
+1 "Firefox ESR" on 2 "Brave" off 3 "Chromium" off 4 "Zen Browser" off 5 "Chrome" off 3>&1 1>&2 2>&3)
+for b in $BROWSERS; do
+  case $b in
     1) sudo apt install -y firefox-esr;;
-    2) wget -q https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb -O /tmp/chrome.deb && sudo apt install -y /tmp/chrome.deb;;
-    3) sudo apt install -y apt-transport-https curl; \
-   curl -fsS https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg | sudo tee /usr/share/keyrings/brave-browser-archive-keyring.gpg >/dev/null; \
-   echo "deb [signed-by=/usr/share/keyrings/brave-browser-archive-keyring.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave-browser-release.list; \
-   sudo apt update && sudo apt install -y brave-browser;;
-    4) sudo apt install -y ungoogled-chromium;;
+    2) sudo apt install -y apt-transport-https curl; \
+      curl -fsSLo /usr/share/keyrings/brave.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
+      echo "deb [signed-by=/usr/share/keyrings/brave.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave.list; \
+      sudo apt update && sudo apt install -y brave-browser;;
+    3) sudo apt install -y chromium;;
+    4) wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb;;
+    5) wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb;;
   esac
 done
 
-# ───────────────────────────────────────────────
-# 3️⃣ Systemtools & Themes
-# ───────────────────────────────────────────────
-sudo apt install -y fish alacritty rofi dunst picom flameshot playerctl brightnessctl \
-arc-theme papirus-icon-theme bibata-cursor-theme fonts-jetbrains-mono fonts-noto-color-emoji \
-zram-tools pipewire pipewire-audio pipewire-pulse wireplumber tlp lm-sensors feh
+# ── Systemtools
+sudo apt install -y xorg xinit picom alacritty fish btop fzf eza bat ripgrep fastfetch feh \
+pipewire wireplumber pipewire-pulse zram-tools variety arc-theme papirus-icon-theme tlp preload jq xclip
+sudo systemctl enable --now tlp.service || true
+sudo apt install -y libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
+
+# ── Fonts
+FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
+mkdir -p ~/.local/share/fonts
+wget -q $FONT_URL -O /tmp/JBM.zip
+unzip -o /tmp/JBM.zip -d ~/.local/share/fonts >/dev/null
+fc-cache -fv >/dev/null
+
+# ── Wallpaper Fix
+mkdir -p ~/.config/dwm
+if [ -f ./wallpaper.png ]; then
+  cp ./wallpaper.png ~/.config/dwm/wallpaper.png
+else
+  wget -q -O ~/.config/dwm/wallpaper.png https://raw.githubusercontent.com/dennishilk/linux-wallpapers/main/default.png || true
+fi
+
+# ── .xinitrc + Autostart
+cat > ~/.xinitrc <<EOF
+#!/bin/bash
+export PATH="\$HOME/.config/dwm/bin:\$PATH"
+setxkbmap $XKB &
+xrandr --output "\$(xrandr | awk '/ connected/{print \$1;exit}')" --auto
+feh --bg-fill ~/.config/dwm/wallpaper.png &
+picom --config ~/.config/dwm/picom.conf &
+exec dwm
+EOF
+chmod +x ~/.xinitrc
+
+# ── Fish Config + Autostart
+sudo mkdir -p /var/lib; echo 0 | sudo tee /var/lib/system-uptime.db >/dev/null
+mkdir -p ~/.config/fish
+cat > ~/.config/fish/config.fish <<'EOF'
+function fish_greeting
+ set_color cyan
+ echo "🐧 "(lsb_release -ds)" "(uname -m)
+ set_color normal
+end
+alias exa="eza"
+# Autostart DWM bei TTY1
+if status is-login
+  if test -z "$DISPLAY" -a (tty) = "/dev/tty1"
+    echo "🚀 Starting DWM..."
+    exec startx -- :0 vt1 >/dev/null 2>&1
+  end
+end
+EOF
 chsh -s /usr/bin/fish
 
-
-# Colors
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-CYAN='\033[0;36m'
-NC='\033[0m'
-
-die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
-msg() { echo -e "${CYAN}$*${NC}"; }
-
-# Export package lists for different distros
-export_packages() {
-    echo "=== DWM Setup - Package Lists for Different Distributions ==="
-    echo
-    
-    # Combine all packages
-    local all_packages=(
-        "${PACKAGES_CORE[@]}"
-        "${PACKAGES_UI[@]}"
-        "${PACKAGES_FILE_MANAGER[@]}"
-        "${PACKAGES_AUDIO[@]}"
-        "${PACKAGES_UTILITIES[@]}"
-        "${PACKAGES_TERMINAL[@]}"
-        "${PACKAGES_FONTS[@]}"
-        "${PACKAGES_BUILD[@]}"
-    )
-    
-    echo "DEBIAN/UBUNTU:"
-    echo "sudo apt install ${all_packages[*]}"
-    echo
-    
-    # Arch equivalents
-    local arch_packages=(
-        "xorg-server xorg-xinit xorg-xbacklight xbindkeys xvkbd xorg-xinput"
-        "base-devel sxhkd xdotool"
-        "libnotify"
-        "rofi dunst feh lxappearance network-manager-applet"
-        "thunar thunar-archive-plugin thunar-volman"
-        "gvfs dialog mtools smbclient cifs-utils unzip"
-        "pavucontrol pulsemixer pamixer pipewire-pulse"
-        "avahi acpi acpid xfce4-power-manager flameshot"
-        "qimgv firefox nala xdg-user-dirs-gtk"
-        "suckless-tools eza"
-        "ttf-font-awesome terminus-font"
-        "cmake meson ninja curl pkgconf"
-    )
-    
-    echo "ARCH LINUX:"
-    echo "sudo pacman -S ${arch_packages[*]}"
-    echo
-    
-    # Fedora equivalents
-    local fedora_packages=(
-        "xorg-x11-server-Xorg xorg-x11-xinit xbacklight xbindkeys xvkbd xinput"
-        "gcc make git sxhkd xdotool"
-        "libnotify"
-        "rofi dunst feh lxappearance NetworkManager-gnome"
-        "thunar thunar-archive-plugin thunar-volman"
-        "gvfs dialog mtools samba-client cifs-utils unzip"
-        "pavucontrol pulsemixer pamixer pipewire-pulseaudio"
-        "avahi acpi acpid xfce4-power-manager flameshot"
-        "qimgv firefox xdg-user-dirs-gtk"
-        "eza"
-        "fontawesome-fonts terminus-fonts"
-        "cmake meson ninja-build curl pkgconfig"
-    )
-    
-    echo "FEDORA:"
-    echo "sudo dnf install ${fedora_packages[*]}"
-    echo
-    
-    echo "NOTE: Some packages may have different names or may not be available"
-    echo "in all distributions. You may need to:"
-    echo "  - Find equivalent packages in your distro's repositories"
-    echo "  - Install some tools from source (like suckless tools)"
-    echo "  - Use alternative package managers (AUR for Arch, Flatpak, etc.)"
-    echo
-    echo "After installing packages, you can use:"
-    echo "  $0 --only-config    # To copy just the DWM configuration files"
-}
-
-# Check if we should export packages and exit
-if [ "$EXPORT_PACKAGES" = true ]; then
-    export_packages
-    exit 0
-fi
-
-# Banner
-clear
-echo -e "${CYAN}"
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo " |j|u|s|t|a|g|u|y|l|i|n|u|x| "
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo " |d|w|m| |s|e|t|u|p|        | "
-echo " +-+-+-+-+-+-+-+-+-+-+-+-+-+ "
-echo -e "${NC}\n"
-
-read -p "Install DWM? (y/n) " -n 1 -r
-echo
-[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
-
-# Update system
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Updating system..."
-    sudo apt-get update && sudo apt-get upgrade -y
-else
-    msg "Skipping system update (--only-config mode)"
-fi
-
-# Package groups for better organization
-PACKAGES_CORE=(
-    xorg xorg-dev xbacklight xbindkeys xvkbd xinput
-    build-essential sxhkd xdotool dbus-x11
-    libnotify-bin libnotify-dev libusb-0.1-4
-)
-
-PACKAGES_UI=(
-    rofi dunst feh lxappearance network-manager-gnome
-)
-
-PACKAGES_FILE_MANAGER=(
-    thunar thunar-archive-plugin thunar-volman
-    gvfs-backends dialog mtools smbclient cifs-utils unzip
-)
-
-PACKAGES_AUDIO=(
-    pavucontrol pulsemixer pamixer pipewire-audio
-)
-
-PACKAGES_UTILITIES=(
-    avahi-daemon acpi acpid xfce4-power-manager
-    flameshot qimgv xdg-user-dirs-gtk fd-find
-)
-
-PACKAGES_TERMINAL=(
-    suckless-tools
-)
-
-PACKAGES_FONTS=(
-    fonts-recommended fonts-font-awesome fonts-terminus
-)
-
-PACKAGES_BUILD=(
-    cmake meson ninja-build curl pkg-config
-)
-
-
-# Install packages by group
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing core packages..."
-    sudo apt-get install -y "${PACKAGES_CORE[@]}" || die "Failed to install core packages"
-
-    msg "Installing UI components..."
-    sudo apt-get install -y "${PACKAGES_UI[@]}" || die "Failed to install UI packages"
-
-    msg "Installing file manager..."
-    sudo apt-get install -y "${PACKAGES_FILE_MANAGER[@]}" || die "Failed to install file manager"
-
-    msg "Installing audio support..."
-    sudo apt-get install -y "${PACKAGES_AUDIO[@]}" || die "Failed to install audio packages"
-
-    msg "Installing system utilities..."
-    sudo apt-get install -y "${PACKAGES_UTILITIES[@]}" || die "Failed to install utilities"
-    
-    # Try firefox-esr first (Debian), then firefox (Ubuntu)
-    sudo apt-get install -y firefox-esr 2>/dev/null || sudo apt-get install -y firefox 2>/dev/null || msg "Note: firefox not available, skipping..."
-
-    msg "Installing terminal tools..."
-    sudo apt-get install -y "${PACKAGES_TERMINAL[@]}" || die "Failed to install terminal tools"
-    
-    # Try exa first (Debian 12), then eza (newer Ubuntu)
-    sudo apt-get install -y exa 2>/dev/null || sudo apt-get install -y eza 2>/dev/null || msg "Note: exa/eza not available, skipping..."
-
-    msg "Installing fonts..."
-    sudo apt-get install -y "${PACKAGES_FONTS[@]}" || die "Failed to install fonts"
-
-    msg "Installing build dependencies..."
-    sudo apt-get install -y "${PACKAGES_BUILD[@]}" || die "Failed to install build tools"
-
-    # Enable services
-    sudo systemctl enable avahi-daemon acpid
-else
-    msg "Skipping package installation (--only-config mode)"
-fi
-
-# Handle existing config
-if [ -d "$CONFIG_DIR" ]; then
-    clear
-    read -p "Found existing suckless config. Backup? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        mv "$CONFIG_DIR" "$CONFIG_DIR.bak.$(date +%s)"
-        msg "Backed up existing config"
-    else
-        clear
-        read -p "Overwrite without backup? (y/n) " -n 1 -r
-        echo
-        [[ $REPLY =~ ^[Yy]$ ]] || die "Installation cancelled"
-        rm -rf "$CONFIG_DIR"
-    fi
-fi
-
-# Copy configs
-msg "Setting up configuration..."
-mkdir -p "$CONFIG_DIR"
-cp -r "$SCRIPT_DIR"/suckless/* "$CONFIG_DIR"/ || die "Failed to copy configs"
-
-# Build suckless tools
-msg "Building suckless tools..."
-for tool in dwm slstatus st; do
-    cd "$CONFIG_DIR/$tool" || die "Cannot find $tool"
-    make && sudo make clean install || die "Failed to build $tool"
+# ── DWM + Tools lokal
+mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
+cd ~/.config/dwm/src
+for r in dwm dmenu slstatus; do
+  git clone https://git.suckless.org/$r
+  cd $r
+  sed -i "s|^PREFIX =.*|PREFIX = \$(HOME)/.config/dwm|" config.mk
+  if [ "$r" = "dwm" ]; then
+    sed -i 's|"st", NULL|"alacritty", NULL|' config.def.h
+    sed -i 's|Mod1Mask|Mod4Mask|' config.def.h
+  fi
+  make clean install
+  cd ..
 done
 
-# Create desktop entries (skip if --only-config since they likely exist)
-if [ "$ONLY_CONFIG" = false ]; then
-    # Create desktop entry for DWM
-    sudo mkdir -p /usr/share/xsessions
-    cat <<EOF | sudo tee /usr/share/xsessions/dwm.desktop >/dev/null
-[Desktop Entry]
-Name=dwm
-Comment=Dynamic window manager
-Exec=dwm
-Type=XSession
-EOF
+echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
+echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish >/dev/null 2>&1 || true
 
-    # Create desktop file for ST
-    mkdir -p ~/.local/share/applications
-    cat > ~/.local/share/applications/st.desktop << EOF
-[Desktop Entry]
-Name=st
-Comment=Simple Terminal
-Exec=st
-Icon=utilities-terminal
-Terminal=false
-Type=Application
-Categories=System;TerminalEmulator;
-EOF
-else
-    msg "Skipping desktop entry creation (--only-config mode)"
-fi
-
-# Setup directories
-xdg-user-dirs-update
-mkdir -p ~/Screenshots
-
-# Butterscript helper
-get_script() {
-    wget -qO- "https://codeberg.org/justaguylinux/butterscripts/raw/branch/main/$1" | bash
-}
-
-# Install essential components
-if [ "$ONLY_CONFIG" = false ]; then
-    mkdir -p "$TEMP_DIR" && cd "$TEMP_DIR"
-
-    msg "Installing picom..."
-    get_script "setup/install_picom.sh"
-
-    msg "Installing wezterm..."
-    get_script "wezterm/install_wezterm.sh"
-
-    msg "Installing fonts..."
-    get_script "theming/install_nerdfonts.sh"
-
-    msg "Installing themes..."
-    get_script "theming/install_theme.sh"
-    
-    msg "Downloading wallpaper directory..."
-    cd "$CONFIG_DIR"
-    git clone --depth 1 --filter=blob:none --sparse https://codeberg.org/justaguylinux/butterscripts.git "$TEMP_DIR/butterscripts-wallpaper" || die "Failed to clone butterscripts"
-    cd "$TEMP_DIR/butterscripts-wallpaper"
-    git sparse-checkout set wallpaper || die "Failed to set sparse-checkout"
-    cp -r wallpaper "$CONFIG_DIR"/ || die "Failed to copy wallpaper directory"
-
-    msg "Downloading display manager installer..."
-    wget -O "$TEMP_DIR/install_lightdm.sh" "https://codeberg.org/justaguylinux/butterscripts/raw/branch/main/system/install_lightdm.sh"
-    chmod +x "$TEMP_DIR/install_lightdm.sh"
-    msg "Running display manager installer..."
-    # Run in current terminal session to preserve interactivity
-    bash "$TEMP_DIR/install_lightdm.sh"
-
-    # Optional tools
-    clear
-    read -p "Install optional tools (browsers, editors, etc)? (y/n) " -n 1 -r
-    echo
-    if [[ $REPLY =~ ^[Yy]$ ]]; then
-        msg "Downloading optional tools installer..."
-        wget -O "$TEMP_DIR/optional_tools.sh" "https://codeberg.org/justaguylinux/butterscripts/raw/branch/main/setup/optional_tools.sh"
-        chmod +x "$TEMP_DIR/optional_tools.sh"
-        msg "Running optional tools installer..."
-        # Run in current terminal session to preserve interactivity
-        if bash "$TEMP_DIR/optional_tools.sh"; then
-            msg "Optional tools completed successfully"
-        else
-            msg "Optional tools exited (this is normal if cancelled by user)"
-        fi
-    fi
-else
-    msg "Skipping external tool installation (--only-config mode)"
-fi
-
-# Done
-echo -e "\n${GREEN}Installation complete!${NC}"
-echo "1. Log out and select 'dwm' from your display manager"
-echo "2. Press Super+H for keybindings"
+echo
+echo "✅ Fertig!"
+echo "🧠 Automatischer Start von DWM nach Login auf TTY1"
+echo "🎨 Wallpaper: ~/.config/dwm/wallpaper.png"
+echo "🔥 Nur eine Passworteingabe, keine Patches mehr"
