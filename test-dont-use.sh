@@ -68,8 +68,10 @@ for choice in $BROWSERS; do
 done
 
 # ── Base Packages
-sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh \
-  pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools
+sudo apt install -y xorg xinit picom alacritty fish nano htop tmux fastfetch git feh \
+  pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools \
+  libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
+
 
 # ── JetBrainsMono Nerd Font
 mkdir -p ~/.local/share/fonts
