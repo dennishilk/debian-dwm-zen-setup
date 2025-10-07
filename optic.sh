@@ -1,18 +1,15 @@
 #!/usr/bin/env bash
 set -e
-echo "🎨 Starte DWM Feintuning …"
+echo "🎨 Starte optisches Feintuning für DWM …"
 
-# GTK + Icon + Cursor Themes
-sudo apt install -y arc-theme papirus-icon-theme bibata-cursor-theme
-gsettings set org.gnome.desktop.interface gtk-theme 'Arc-Dark' || true
-gsettings set org.gnome.desktop.interface icon-theme 'Papirus-Dark' || true
-gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' || true
+# ── GTK, Icons, Cursor
+sudo apt install -y arc-theme papirus-icon-theme bibata-cursor-theme fonts-noto-color-emoji
 
-# Fonts
-sudo apt install -y fonts-noto-color-emoji
-fc-cache -fv >/dev/null
+gsettings set org.gnome.desktop.interface gtk-theme 'Arc-Dark' 2>/dev/null || true
+gsettings set org.gnome.desktop.interface icon-theme 'Papirus-Dark' 2>/dev/null || true
+gsettings set org.gnome.desktop.interface cursor-theme 'Bibata-Modern-Classic' 2>/dev/null || true
 
-# Picom Config
+# ── Picom Config (Transparenz + Blur)
 mkdir -p ~/.config/dwm ~/.config/picom
 cat > ~/.config/dwm/picom.conf <<'EOF'
 backend = "glx";
@@ -23,7 +20,7 @@ shadow-radius = 12;
 shadow-opacity = 0.4;
 shadow-offset-x = -10;
 shadow-offset-y = -10;
-inactive-opacity = 0.90;
+inactive-opacity = 0.9;
 active-opacity = 1.0;
 opacity-rule = [ "90:class_g = 'Alacritty'" ];
 blur-method = "dual_kawase";
@@ -33,7 +30,7 @@ fade-in-step = 0.03;
 fade-out-step = 0.03;
 EOF
 
-# Alacritty Config
+# ── Alacritty Config
 mkdir -p ~/.config/alacritty
 cat > ~/.config/alacritty/alacritty.yml <<'EOF'
 window:
@@ -57,20 +54,7 @@ colors:
     text: "#f8f8f2"
 EOF
 
-# slstatus Config
-mkdir -p ~/.config/dwm/src/slstatus
-cat > ~/.config/dwm/src/slstatus/config.def.h <<'EOF'
-static const struct arg args[] = {
-    /* function format          argument */
-    { cpu_perc,   "🧠 %s%% ",  NULL },
-    { ram_perc,   "💾 %s%% ",  NULL },
-    { vol_perc,   "🔊 %s%% ",  "default" },
-    { datetime,   "📅 %s",     "%H:%M | %d.%m.%Y" },
-};
-EOF
-cd ~/.config/dwm/src/slstatus && make clean install
-
-# dunst (Notifications)
+# ── Dunst Notifications
 sudo apt install -y dunst
 mkdir -p ~/.config/dunst
 cat > ~/.config/dunst/dunstrc <<'EOF'
@@ -94,7 +78,7 @@ cat > ~/.config/dunst/dunstrc <<'EOF'
     foreground = "#f8f8f2"
 EOF
 
-# rofi Launcher
+# ── Rofi Launcher
 sudo apt install -y rofi
 mkdir -p ~/.config/rofi
 cat > ~/.config/rofi/config.rasi <<'EOF'
@@ -107,11 +91,46 @@ configuration {
 }
 EOF
 
-# Extra Tools
-sudo apt install -y pavucontrol gamemode mangohud powertop
+# ── slstatus Fix + Theme
+cd ~/.config/dwm/src/slstatus || exit 1
+cat > config.def.h <<'EOF'
+/* slstatus config by Dennis Hilk - Debian 13 DWM Ultimate v6.6 */
+#include <stdio.h>
+#include <time.h>
+#include "slstatus.h"
+#include "util.h"
 
-# Autostart daemons
+/* Update interval in seconds */
+static const unsigned int interval = 2;
+
+/* Text to show if no value can be retrieved */
+static const char unknown_str[] = "n/a";
+
+/* Maximum output string length */
+#define MAXLEN 2048
+
+static const struct arg args[] = {
+    { cpu_perc,    "🧠 %3s%% ",      NULL },
+    { cpu_freq,    "⚙️ %3sGHz ",     NULL },
+    { ram_perc,    "💾 %2s%% ",      NULL },
+    { temp,        "🌡️ %2s°C ",      "/sys/class/thermal/thermal_zone0/temp" },
+    { vol_perc,    "🔊 %s%% ",       "default" },
+    { uptime,      "⏱️ %s ",         NULL },
+    { datetime,    "📅 %s",          "%H:%M | %d.%m.%Y" },
+};
+EOF
+
+rm -f config.h
+make clean install
+pkill slstatus 2>/dev/null || true
+slstatus &
+
+# ── Autostart (Picom + Dunst)
 mkdir -p ~/.config/dwm/autostart
+if ! grep -q "autostart.sh" ~/.xinitrc; then
+  sed -i '/feh --bg-fill/a bash ~/.config/dwm/autostart.sh &' ~/.xinitrc
+fi
+
 cat > ~/.config/dwm/autostart.sh <<'EOF'
 #!/bin/bash
 picom --config ~/.config/dwm/picom.conf &
@@ -119,12 +138,9 @@ dunst &
 EOF
 chmod +x ~/.config/dwm/autostart.sh
 
-# Add autostart to .xinitrc
-if ! grep -q "autostart.sh" ~/.xinitrc; then
-  sed -i '/feh --bg-fill/a bash ~/.config/dwm/autostart.sh &' ~/.xinitrc
-fi
-
 echo
-echo "✅ Feintuning abgeschlossen!"
-echo "🎨 Dark Theme aktiv, Transparenz & Bar konfiguriert"
-echo "🔔 Dunst + Rofi + Audio-Tools installiert"
+echo "✅ Optisches Feintuning abgeschlossen!"
+echo "🎨 Dark Theme aktiv (Arc-Dark + Papirus-Dark + Bibata Cursor)"
+echo "🌫️ Picom Blur & Alacritty Transparenz konfiguriert"
+echo "🧠 slstatus fixiert & neu kompiliert"
+echo "🔔 Dunst + Rofi laufen automatisch"
