@@ -20,12 +20,12 @@ echo "✅ Debian 13 erkannt – Installation startet ..."
 
 sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc make gcc
 
-# ── Zen-Kernel
+# ── Zen-Kernel optional
 if dialog --yesno "Zen-Kernel installieren?" 8 40; then
   sudo apt install -y linux-image-zen linux-headers-zen || echo "⚠️ Zen-Kernel evtl. nicht im Repo verfügbar."
 fi
 
-# ── GPU Driver
+# ── GPU Driver optional
 if dialog --yesno "Aktuelle GPU-Treiber installieren?" 8 45; then
   if lspci | grep -qi nvidia; then
     echo "🟩 NVIDIA erkannt → Treiber installieren ..."
@@ -65,7 +65,7 @@ for choice in $BROWSERS; do
   esac
 done
 
-# ── Extra Tools Auswahl
+# ── Extra Tools Auswahl (inkl. Steam-Fix)
 EXTRAS=$(dialog --checklist "Wähle zusätzliche Tools zur Installation:" 20 70 8 \
 1 "OBS Studio (Screen Recording)" off \
 2 "VSCodium (Code Editor)" off \
@@ -89,7 +89,15 @@ for choice in $EXTRAS; do
     3) sudo apt install -y gimp ;;
     4) sudo apt install -y audacity ;;
     5) sudo apt install -y blender ;;
-    6) sudo apt install -y steam ;;
+    6)
+      echo "🎮 Steam wird vorbereitet..."
+      sudo sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list
+      sudo dpkg --add-architecture i386
+      wget -O /tmp/valve.gpg https://repo.steampowered.com/steam/archive/stable/steam.gpg
+      sudo install -Dm644 /tmp/valve.gpg /etc/apt/trusted.gpg.d/steam.gpg
+      echo "deb [arch=amd64,i386 signed-by=/etc/apt/trusted.gpg.d/steam.gpg] https://repo.steampowered.com/steam/ stable steam" | sudo tee /etc/apt/sources.list.d/steam.list
+      sudo apt update
+      sudo apt install -y steam-launcher ;;
     7) sudo apt install -y lutris ;;
     8) sudo apt install -y virtualbox ;;
   esac
@@ -102,11 +110,9 @@ sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh 
 
 # ── Stylische Nerd Font Installation mit ASCII Fortschrittsbalken
 sudo apt install -y unzip >/dev/null
-
 FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
 FONT_DIR="$HOME/.local/share/fonts"
 ZIP_PATH="/tmp/JetBrainsMono.zip"
-
 mkdir -p "$FONT_DIR"
 
 animate_bar() {
@@ -153,7 +159,7 @@ if [ -f "./wallpaper.png" ]; then
   cp ./wallpaper.png ~/.config/dwm/
 fi
 
-# ── .xinitrc → Autostart DWM (lokal)
+# ── .xinitrc → Autostart DWM
 cat > ~/.xinitrc <<'EOF'
 #!/bin/bash
 export PATH="$HOME/.config/dwm/bin:$PATH"
@@ -239,7 +245,7 @@ function fish_greeting
 end
 EOF
 
-# ── Build DWM + Tools lokal unter ~/.config/dwm
+# ── Build DWM + Tools lokal
 mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
 cd ~/.config/dwm/src
 git clone https://git.suckless.org/dwm && cd dwm && make && cp dwm ~/.config/dwm/bin && cd ..
@@ -256,4 +262,4 @@ echo "✅ Installation abgeschlossen!"
 echo "Starte DWM mit:  startx"
 echo "🧠 Super + Return = Alacritty (System-Dashboard)"
 echo "🎨 DWM & Tools: ~/.config/dwm/bin"
-echo "💾 ZRAM, PipeWire, Fish & Fastfetch aktiv."
+echo "🎮 Steam-Fix + ZRAM, PipeWire, Fish & Fastfetch aktiv."
