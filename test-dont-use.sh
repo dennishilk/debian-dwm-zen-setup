@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # ─────────────────────────────────────────────
-#  Debian 13 DWM Install Script by Dennis Hilk
+#  Debian 13 DWM Setup Script by Dennis Hilk
 # ─────────────────────────────────────────────
 
 abort(){ echo "❌ Fehler: $1" >&2; exit 1; }
@@ -28,7 +28,7 @@ if dialog --yesno "Aktuelle GPU-Treiber installieren?" 8 45; then
   else echo "❔ Keine unterstützte GPU erkannt."; fi
 fi
 
-# ── Tastatur / Sprachen-Menü
+# ── Tastatur-/Sprachauswahl
 KEYBOARD=$(dialog --menu "Wähle Tastatur-Layout / Keyboard layout:" 15 60 6 \
 1 "Deutsch (DE nodeadkeys)" \
 2 "English (US)" \
@@ -47,10 +47,10 @@ case $KEYBOARD in
 esac
 clear; echo "⌨️  Tastatur-Layout: $XKB_LAYOUT"
 
-# ── Browser-Auswahl
+# ── Browser-Menü
 BROWSERS=$(dialog --checklist "Wähle Browser zur Installation:" 15 60 5 \
 1 "Firefox ESR" on 2 "Brave" off 3 "Chromium" off 4 "Zen Browser" off 5 "Google Chrome" off 3>&1 1>&2 2>&3)
-clear; echo "🌐 Installiere Browser ..."
+clear
 for choice in $BROWSERS; do
   case $choice in
     1) sudo apt install -y firefox-esr ;;
@@ -64,10 +64,10 @@ for choice in $BROWSERS; do
   esac
 done
 
-# ── Extra-Tools (inkl. Steam-Fix)
+# ── Extra-Tools
 EXTRAS=$(dialog --checklist "Wähle weitere Tools:" 20 70 8 \
 1 "OBS Studio" off 2 "VSCodium" off 3 "GIMP" off 4 "Audacity" off 5 "Blender" off 6 "Steam" off 7 "Lutris" off 8 "VirtualBox" off 3>&1 1>&2 2>&3)
-clear; echo "🧩 Installiere Tools ..."
+clear
 for choice in $EXTRAS; do
   case $choice in
     1) sudo apt install -y obs-studio ;;
@@ -78,8 +78,7 @@ for choice in $EXTRAS; do
     3) sudo apt install -y gimp ;;
     4) sudo apt install -y audacity ;;
     5) sudo apt install -y blender ;;
-    6) echo "🎮 Steam-Repo aktivieren ..."; \
-       sudo sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
+    6) sudo sed -i 's/main/main contrib non-free non-free-firmware/g' /etc/apt/sources.list; \
        sudo dpkg --add-architecture i386; \
        wget -O /tmp/valve.gpg https://repo.steampowered.com/steam/archive/stable/steam.gpg; \
        sudo install -Dm644 /tmp/valve.gpg /etc/apt/trusted.gpg.d/steam.gpg; \
@@ -95,19 +94,19 @@ sudo apt install -y xorg xinit picom alacritty fish htop tmux fastfetch git feh 
 pipewire wireplumber pipewire-audio pipewire-pulse timeshift zram-tools \
 libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev unzip
 
-# ── Nerd-Font mit stylischem Progress-Bar
+# ── Nerd-Font-Installer
 FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
 FONT_DIR="$HOME/.local/share/fonts"; ZIP_PATH="/tmp/JetBrainsMono.zip"; mkdir -p "$FONT_DIR"
-animate_bar(){ local d=$1 s=0 w=40; while [ $s -le $d ]; do p=$((s*100/d)); f=$((p*w/100)); e=$((w-f)); printf "\r["; for ((i=0;i<f;i++));do printf "▰";done; for ((i=0;i<e;i++));do printf "▱";done; printf "] %3d%%" "$p"; sleep 0.05; s=$((s+1)); done; echo; }
+animate_bar(){ local d=$1 s=0 w=40; while [ $s -le $d ]; do p=$((s*100/d)); f=$((p*w/100)); e=$((w-f)); printf "\r["; for((i=0;i<f;i++));do printf "▰";done; for((i=0;i<e;i++));do printf "▱";done; printf "] %3d%%" "$p"; sleep 0.05; s=$((s+1)); done; echo; }
 echo "🧩 Installing JetBrainsMono Nerd Font ..."; wget -q "$FONT_URL" -O "$ZIP_PATH" & pid=$!; while ps -p $pid >/dev/null 2>&1; do animate_bar 20; done; echo
-echo "📦 Extracting Font ..."; animate_bar 15; unzip -o "$ZIP_PATH" -d "$FONT_DIR" >/dev/null; fc-cache -fv >/dev/null; echo "✅ Nerd Font ready!"; sleep 1
+unzip -o "$ZIP_PATH" -d "$FONT_DIR" >/dev/null; fc-cache -fv >/dev/null; echo "✅ Font ready!"
 
 # ── ZRAM
 sudo sed -i 's/^#\?ALGO=.*/ALGO=zstd/' /etc/default/zramswap
 sudo sed -i 's/^#\?PERCENT=.*/PERCENT=50/' /etc/default/zramswap
 sudo systemctl enable --now zramswap.service
 
-# ── Wallpaper + .xinitrc (mit Tastaturlayout)
+# ── Wallpaper + .xinitrc
 mkdir -p ~/.config/dwm; [ -f ./wallpaper.png ] && cp ./wallpaper.png ~/.config/dwm/
 cat > ~/.xinitrc <<EOF
 #!/bin/bash
@@ -124,7 +123,7 @@ exec dwm
 EOF
 chmod +x ~/.xinitrc
 
-# ── Auto-Login-DWM
+# ── Auto-Login DWM
 if ! grep -q "startx" ~/.bash_profile 2>/dev/null; then cat >> ~/.bash_profile <<'EOF'
 if [ -z "$DISPLAY" ] && [ "$(tty)" = "/dev/tty1" ]; then
   startx
@@ -145,7 +144,7 @@ colors: {primary: {background: "0x0f111a", foreground: "0xc5c8c6"}}
 shell: {program: /usr/bin/fish}
 EOF
 
-# ── Fish Dashboard (fix)
+# ── Fish Dashboard
 chsh -s /usr/bin/fish
 sudo mkdir -p /var/lib; [ ! -f /var/lib/system-uptime.db ] && echo "0" | sudo tee /var/lib/system-uptime.db >/dev/null
 mkdir -p ~/.config/fish
@@ -157,7 +156,7 @@ function fish_greeting
   set_color green
   echo "🧠 Host:" (hostname)
   echo "⚙️ Kernel:" (uname -r)
-  echo "⏱️ Current uptime:" (uptime -p | sed 's/up //')
+  echo "⏱️ Uptime:" (uptime -p | sed 's/up //')
   set u (awk '{print int($1)}' /proc/uptime)
   set s (cat /var/lib/system-uptime.db 2>/dev/null; or echo 0)
   if not string match -rq '^[0-9]+$' -- $s; set s 0; end
@@ -181,27 +180,32 @@ function fish_greeting
 end
 EOF
 
-# ── DWM + Tools lokal
+# ── DWM + Tools lokal unter ~/.config/dwm
 mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
 cd ~/.config/dwm/src
-git clone https://git.suckless.org/dwm
-cd dwm
-# Super + Return → Alacritty und Mod4 = Super-Taste
-sed -i 's|"st", NULL|"alacritty", NULL|' config.def.h
-sed -i 's|Mod1Mask|Mod4Mask|' config.def.h
-make clean install
-cp dwm ~/.config/dwm/bin/
-cd ..
-git clone https://git.suckless.org/dmenu && cd dmenu && make && cp dmenu ~/.config/dwm/bin/ && cd ..
-git clone https://git.suckless.org/slstatus && cd slstatus && make && cp slstatus ~/.config/dwm/bin/ && cd ..
+
+for repo in dwm dmenu slstatus; do
+  echo "🧩 Clone & build $repo ..."
+  git clone https://git.suckless.org/$repo
+  cd $repo
+  sed -i "s|^PREFIX = .*|PREFIX = \$(HOME)/.config/dwm|" config.mk
+  if [ "$repo" = "dwm" ]; then
+    sed -i 's|"st", NULL|"alacritty", NULL|' config.def.h
+    sed -i 's|Mod1Mask|Mod4Mask|' config.def.h
+  fi
+  make clean install
+  cd ..
+done
+cd ~
 
 # ── PATH
 echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
 echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish
 
 # ── Fertig
-echo; echo "✅ Installation abgeschlossen!"
+echo
+echo "✅ Installation abgeschlossen!"
 echo "🧠 Automatischer Start in DWM nach Login auf TTY1"
-echo "⌨️ Keyboard Layout: $XKB_LAYOUT"
+echo "⌨️ Tastaturlayout: $XKB_LAYOUT"
 echo "🎨 DWM + Tools: ~/.config/dwm/bin"
 echo "🎮 Steam-Fix, ZRAM, PipeWire, Fish & Fastfetch aktiv."
