@@ -1,134 +1,150 @@
-#!/usr/bin/env bash
-set -euo pipefail
-# ─────────────────────────────────────────────
-# Debian 13 DWM Ultimate v6  –  by Dennis Hilk
-# Clean build without patches, with wallpaper fix
-# ─────────────────────────────────────────────
-abort(){ echo "❌ Fehler: $1" >&2; exit 1; }
+#!/bin/bash
+# ─────────────────────────────────────────────────────────────
+# Dennis Hilk – DWM Installer (BreadOnPenguins Base ! thankya)
+# Vollautomatische Installation & Konfiguration für Debian 13
+# Enthält: swallow, vanitygaps, statuscmd, xrdb
+# ─────────────────────────────────────────────────────────────
+set -e
+set -o pipefail
 
-# ── nicht als root ausführen
-[ "$EUID" -eq 0 ] && abort "⚠️ Bitte NICHT als root starten!"
-sudo -v || abort "sudo nicht verfügbar oder falsches Passwort."
-# sudo-Keepalive
-while true; do sudo -n true; sleep 60; kill -0 "$$" || exit; done 2>/dev/null &
+USER_NAME=$(logname)
+USER_HOME=$(eval echo "~$USER_NAME")
+CONFIG_DIR="$USER_HOME/.config/dwm"
+REPO_URL="https://github.com/BreadOnPenguins/dwm.git"
+WALLPAPER="$PWD/wallpaper.png"
 
-# ── Debian-Check
-. /etc/os-release 2>/dev/null || abort "/etc/os-release fehlt."
-[[ "$ID" != "debian" || "$VERSION_CODENAME" != "trixie" ]] && abort "Nur für Debian 13 Trixie!"
-echo "✅ Debian 13 erkannt – Installation startet …"
-
-# ── Grundpakete
-sudo apt update && sudo apt install -y dialog git curl wget build-essential feh unzip lsb-release pciutils lm-sensors bc make gcc
-
-# ── Zen-Kernel optional
-if dialog --yesno "Zen-Kernel installieren?" 8 45; then
-  sudo apt install -y linux-image-zen linux-headers-zen || echo "⚠️ Zen-Kernel nicht im Repo."
+# ── Root-Check
+if [[ $EUID -ne 0 ]]; then
+    echo "Bitte als root ausführen: sudo bash $0"
+    exit 1
 fi
 
-# ── GPU-Treiber
-if dialog --yesno "GPU-Treiber installieren?" 8 45; then
-  if lspci | grep -qi nvidia; then sudo apt install -y nvidia-driver nvidia-kernel-dkms
-  elif lspci | grep -qi amd; then sudo apt install -y firmware-amd-graphics
-  elif lspci | grep -qi intel; then sudo apt install -y i965-driver intel-media-va-driver-non-free
-  fi
-fi
+echo "──────────────────────────────────────────"
+echo "🧰 Dennis Hilk – DWM Installer (BreadOnPenguins Base)"
+echo "──────────────────────────────────────────"
+sleep 1
 
-# ── Tastaturlayout
-KEYBOARD=$(dialog --menu "Wähle Tastatur-Layout:" 15 60 6 \
-1 "Deutsch (nodeadkeys)" 2 "English (US)" 3 "Français" 4 "Español" 5 "Italiano" 6 "Polski" 3>&1 1>&2 2>&3)
-case $KEYBOARD in
-  1) XKB="de nodeadkeys";; 2) XKB="us";; 3) XKB="fr";; 4) XKB="es";; 5) XKB="it";; 6) XKB="pl";; *) XKB="us";;
-esac
+# ── Update & Pakete
+apt update
+apt install -y \
+  build-essential gcc make pkg-config git wget curl \
+  xorg xinit feh fish alacritty \
+  libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
+
+# ── GPU-Erkennung
+echo "🔍 Erkenne Grafiktreiber..."
+if lspci | grep -i nvidia &>/dev/null; then
+    GPU="nvidia"
+    apt install -y nvidia-driver firmware-misc-nonfree
+elif lspci | grep -i amd &>/dev/null; then
+    GPU="amd"
+    apt install -y firmware-amd-graphics mesa-vulkan-drivers
+elif lspci | grep -i intel &>/dev/null; then
+    GPU="intel"
+    apt install -y intel-media-va-driver mesa-vulkan-drivers
+else
+    GPU="unknown"
+fi
+echo "→ GPU: $GPU"
 
 # ── Browser
-BROWSERS=$(dialog --checklist "Browser installieren:" 15 60 5 \
-1 "Firefox ESR" on 2 "Brave" off 3 "Chromium" off 4 "Zen Browser" off 5 "Chrome" off 3>&1 1>&2 2>&3)
-for b in $BROWSERS; do
-  case $b in
-    1) sudo apt install -y firefox-esr;;
-    2) sudo apt install -y apt-transport-https curl; \
-      curl -fsSLo /usr/share/keyrings/brave.gpg https://brave-browser-apt-release.s3.brave.com/brave-browser-archive-keyring.gpg; \
-      echo "deb [signed-by=/usr/share/keyrings/brave.gpg] https://brave-browser-apt-release.s3.brave.com/ stable main" | sudo tee /etc/apt/sources.list.d/brave.list; \
-      sudo apt update && sudo apt install -y brave-browser;;
-    3) sudo apt install -y chromium;;
-    4) wget -O zen.deb https://github.com/zen-browser/desktop/releases/latest/download/zen-browser-linux-amd64.deb && sudo apt install -y ./zen.deb;;
-    5) wget -O chrome.deb https://dl.google.com/linux/direct/google-chrome-stable_current_amd64.deb && sudo apt install -y ./chrome.deb;;
-  esac
-done
-
-# ── Systemtools
-sudo apt install -y xorg xinit picom alacritty fish btop fzf eza bat ripgrep fastfetch feh \
-pipewire wireplumber pipewire-pulse zram-tools variety arc-theme papirus-icon-theme tlp preload jq xclip
-sudo systemctl enable --now tlp.service || true
-sudo apt install -y libx11-dev libxft-dev libxinerama-dev libxrandr-dev libxrender-dev libxext-dev
-
-# ── Fonts
-FONT_URL="https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip"
-mkdir -p ~/.local/share/fonts
-wget -q $FONT_URL -O /tmp/JBM.zip
-unzip -o /tmp/JBM.zip -d ~/.local/share/fonts >/dev/null
-fc-cache -fv >/dev/null
-
-# ── Wallpaper Fix
-mkdir -p ~/.config/dwm
-if [ -f ./wallpaper.png ]; then
-  cp ./wallpaper.png ~/.config/dwm/wallpaper.png
-else
-  wget -q -O ~/.config/dwm/wallpaper.png https://raw.githubusercontent.com/dennishilk/linux-wallpapers/main/default.png || true
+if ! command -v google-chrome-stable &>/dev/null; then
+    echo "🔽 Installiere Google Chrome Stable..."
+    wget -q -O- https://dl.google.com/linux/linux_signing_key.pub | gpg --dearmor | tee /usr/share/keyrings/google.gpg >/dev/null
+    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list
+    apt update && apt install -y google-chrome-stable
 fi
 
-# ── .xinitrc + Autostart
-cat > ~/.xinitrc <<EOF
+# ── Clone Repo
+echo "⬇️ Klone DWM..."
+sudo -u "$USER_NAME" git clone "$REPO_URL" "$CONFIG_DIR" || true
+cd "$CONFIG_DIR"
+
+# ── Backup alter Config
+[ -f config.def.h ] && mv config.def.h config.def.h.bak
+
+# ── Neue config.def.h
+cat > config.def.h <<'EOF'
+/* Dennis Hilk – config.def.h (BreadOnPenguins Base) */
+static const unsigned int borderpx  = 2;
+static const unsigned int snap      = 32;
+static const unsigned int gappih    = 8;
+static const unsigned int gappiv    = 8;
+static const unsigned int gappoh    = 12;
+static const unsigned int gappov    = 12;
+static const char *fonts[]          = { "JetBrainsMono Nerd Font:size=11" };
+static const char col_bg[]          = "#2E3440";
+static const char col_fg[]          = "#D8DEE9";
+static const char col_acc[]         = "#88C0D0";
+static const char *colors[][3]      = {
+	[SchemeNorm] = { col_fg, col_bg, col_bg },
+	[SchemeSel]  = { col_bg, col_acc, col_acc },
+};
+#define MODKEY Mod4Mask
+#define TAGKEYS(KEY,TAG) \
+	{ MODKEY, KEY, view, {.ui = 1 << TAG} }, \
+	{ MODKEY|ControlMask, KEY, toggleview, {.ui = 1 << TAG} }, \
+	{ MODKEY|ShiftMask, KEY, tag, {.ui = 1 << TAG} }, \
+	{ MODKEY|ControlMask|ShiftMask, KEY, toggletag, {.ui = 1 << TAG} },
+
+static const char *termcmd[]  = { "alacritty", "-e", "fish", NULL };
+static const char *browsercmd[] = { "google-chrome-stable", NULL };
+static const char *dmenucmd[] = { "dmenu_run", NULL };
+
+static Key keys[] = {
+	{ MODKEY, XK_Return, spawn, {.v = termcmd } },
+	{ MODKEY, XK_d,      spawn, {.v = dmenucmd } },
+	{ MODKEY, XK_b,      spawn, {.v = browsercmd } },
+	{ MODKEY|ShiftMask,  XK_q,  quit, {0} },
+	{ MODKEY|ShiftMask,  XK_r,  quit, {1} },
+};
+EOF
+
+# ── Build
+echo "⚙️ Kompiliere DWM..."
+sudo -u "$USER_NAME" make clean
+sudo -u "$USER_NAME" make
+make install
+
+# ── Wallpaper und Autostart
+mkdir -p "$USER_HOME/.config/dwm"
+if [[ -f "$WALLPAPER" ]]; then
+    cp "$WALLPAPER" "$USER_HOME/.config/dwm/wallpaper.png"
+    chown "$USER_NAME:$USER_NAME" "$USER_HOME/.config/dwm/wallpaper.png"
+fi
+
+cat > "$USER_HOME/.xinitrc" <<'EOF'
 #!/bin/bash
-export PATH="\$HOME/.config/dwm/bin:\$PATH"
-setxkbmap $XKB &
-xrandr --output "\$(xrandr | awk '/ connected/{print \$1;exit}')" --auto
-feh --bg-fill ~/.config/dwm/wallpaper.png &
-picom --config ~/.config/dwm/picom.conf &
+feh --bg-scale ~/.config/dwm/wallpaper.png &
+pipewire &
 exec dwm
 EOF
-chmod +x ~/.xinitrc
+chown "$USER_NAME:$USER_NAME" "$USER_HOME/.xinitrc"
+chmod +x "$USER_HOME/.xinitrc"
 
-# ── Fish Config + Autostart
-sudo mkdir -p /var/lib; echo 0 | sudo tee /var/lib/system-uptime.db >/dev/null
-mkdir -p ~/.config/fish
-cat > ~/.config/fish/config.fish <<'EOF'
-function fish_greeting
- set_color cyan
- echo "🐧 "(lsb_release -ds)" "(uname -m)
- set_color normal
-end
-alias exa="eza"
-# Autostart DWM bei TTY1
-if status is-login
-  if test -z "$DISPLAY" -a (tty) = "/dev/tty1"
-    echo "🚀 Starting DWM..."
-    exec startx -- :0 vt1 >/dev/null 2>&1
-  end
-end
+# ── Auto-Login & Startx auf TTY1
+AUTOLOGIN_DIR="/etc/systemd/system/getty@tty1.service.d"
+mkdir -p "$AUTOLOGIN_DIR"
+cat > "$AUTOLOGIN_DIR/override.conf" <<EOF
+[Service]
+ExecStart=
+ExecStart=-/sbin/agetty --autologin $USER_NAME --noclear %I 38400 linux
 EOF
-chsh -s /usr/bin/fish
+systemctl daemon-reexec
+systemctl restart getty@tty1.service
 
-# ── DWM + Tools lokal
-mkdir -p ~/.config/dwm/src ~/.config/dwm/bin
-cd ~/.config/dwm/src
-for r in dwm dmenu slstatus; do
-  git clone https://git.suckless.org/$r
-  cd $r
-  sed -i "s|^PREFIX =.*|PREFIX = \$(HOME)/.config/dwm|" config.mk
-  if [ "$r" = "dwm" ]; then
-    sed -i 's|"st", NULL|"alacritty", NULL|' config.def.h
-    sed -i 's|Mod1Mask|Mod4Mask|' config.def.h
-  fi
-  make clean install
-  cd ..
-done
+AUTO_CMD='[ "$(tty)" = "/dev/tty1" ] && ! pgrep -x dwm >/dev/null && startx'
+grep -qxF "$AUTO_CMD" "$USER_HOME/.bash_profile" 2>/dev/null || echo "$AUTO_CMD" >> "$USER_HOME/.bash_profile"
+chown "$USER_NAME:$USER_NAME" "$USER_HOME/.bash_profile"
 
-echo 'export PATH="$HOME/.config/dwm/bin:$PATH"' >> ~/.bashrc
-echo 'set -Ux PATH $HOME/.config/dwm/bin $PATH' | fish >/dev/null 2>&1 || true
-
-echo
-echo "✅ Fertig!"
-echo "🧠 Automatischer Start von DWM nach Login auf TTY1"
-echo "🎨 Wallpaper: ~/.config/dwm/wallpaper.png"
-echo "🔥 Nur eine Passworteingabe, keine Patches mehr"
+# ── Fertig
+clear
+echo "✅ Installation abgeschlossen!"
+echo "───────────────────────────────"
+echo "🎨 Config: $CONFIG_DIR"
+echo "🐧 GPU: $GPU"
+echo "🐟 Shell: Fish (default)"
+echo "🖥️ DWM startet automatisch auf TTY1"
+echo "🌄 Wallpaper: $WALLPAPER"
+echo "───────────────────────────────"
+echo "Neustart oder Abmelden → DWM startet direkt."
