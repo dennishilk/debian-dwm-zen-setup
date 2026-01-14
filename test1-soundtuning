@@ -34,7 +34,7 @@ table.insert(alsa_monitor.rules, rule)
 EOF
 
 # ── PipeWire config (Low latency)
-mkdir -p ~/.config/pipewire
+mkdir -p ~/.config/pipewire/pipewire.conf.d
 cat > ~/.config/pipewire/pipewire.conf.d/low-latency.conf <<'EOF'
 context.properties = {
   default.clock.rate          = 48000
