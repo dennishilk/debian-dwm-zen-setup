@@ -1,211 +1,142 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+set -euo pipefail
 
-# ────────────────────────────────
-# Debian 13 DWM Ultimate v6.2 Setup
-# By Dennis Hilk
-# ────────────────────────────────
+REPO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+DWM_SRC_DIR="$REPO_DIR/src/dwm"
+USER_BIN_DIR="$HOME/.local/bin"
+USER_CONFIG_DIR="$HOME/.config"
+USER_WALL_DIR="$HOME/.local/share/wallpapers"
+LOG_PREFIX="[debian-dwm-setup]"
 
-ONLY_CONFIG=false
-EXPORT_PACKAGES=false
+log() {
+  echo "$LOG_PREFIX $*"
+}
 
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        --only-config) ONLY_CONFIG=true; shift ;;
-        --export-packages) EXPORT_PACKAGES=true; shift ;;
-        --help)
-            echo "Usage: $0 [OPTIONS]"
-            echo "  --only-config      Only copy or auto-download configs (skip kernel)"
-            echo "  --export-packages  Export package list and exit"
-            echo "  --help             Show this help message"
-            exit 0
-            ;;
-        *)
-            echo "Unknown option: $1"
-            exit 1 ;;
-    esac
-done
+require_cmd() {
+  command -v "$1" >/dev/null 2>&1 || {
+    echo "Missing required command: $1" >&2
+    exit 1
+  }
+}
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-CONFIG_DIR="$HOME/.config/dwm"
-TEMP_DIR="/tmp/dwm_$$"
-LOG_FILE="$HOME/dwm-install.log"
+ensure_sudo() {
+  if [ "$(id -u)" -eq 0 ]; then
+    SUDO=""
+  else
+    require_cmd sudo
+    SUDO="sudo"
+    $SUDO -v
+  fi
+}
 
-exec > >(tee -a "$LOG_FILE") 2>&1
-trap "rm -rf $TEMP_DIR" EXIT
+install_packages() {
+  log "Installing Debian dependencies for dwm + ThinkPad tweaks"
+  $SUDO apt update
+  $SUDO apt install -y \
+    git build-essential libx11-dev libxft-dev libxinerama-dev libxrandr-dev \
+    libxcb1-dev libxcb-util0-dev libxcb-icccm4-dev libxcb-ewmh-dev libxcb-keysyms1-dev \
+    ttf-jetbrains-mono kitty dmenu feh brightnessctl scrot tlp \
+    xorg xinit x11-xserver-utils libx11-xcb-dev libxext-dev libxrender-dev libxfixes-dev \
+    rofi alsa-utils pulseaudio-utils acpi curl
+}
 
-RED='\033[0;31m'; GREEN='\033[0;32m'; CYAN='\033[0;36m'; NC='\033[0m'
-die() { echo -e "${RED}ERROR: $*${NC}" >&2; exit 1; }
-msg() { echo -e "${CYAN}$*${NC}"; }
+prepare_dwm_source() {
+  mkdir -p "$REPO_DIR/src"
+  if [ ! -d "$DWM_SRC_DIR/.git" ]; then
+    log "Cloning dwm source into repository: $DWM_SRC_DIR"
+    git clone https://git.suckless.org/dwm "$DWM_SRC_DIR"
+  else
+    log "Using existing dwm source checkout in repo"
+    git -C "$DWM_SRC_DIR" fetch --all --prune
+    git -C "$DWM_SRC_DIR" reset --hard origin/master
+  fi
 
-clear
-echo -e "${CYAN}"
-echo "──────────────────────────────"
-echo " Debian 13 DWM Ultimate v6.2  "
-echo "──────────────────────────────"
-echo -e "${NC}\n"
+  log "Applying repository dwm config.h"
+  cp "$REPO_DIR/configs/dwm/config.h" "$DWM_SRC_DIR/config.h"
+}
 
-read -p "Proceed with full installation (Zen Kernel + ZRAM + GPU + Chrome + auto-DWM)? (y/n) " -n 1 -r
-echo
-[[ ! $REPLY =~ ^[Yy]$ ]] && exit 1
+build_install_dwm() {
+  log "Building dwm from local source"
+  make -C "$DWM_SRC_DIR" clean
+  make -C "$DWM_SRC_DIR"
+  $SUDO make -C "$DWM_SRC_DIR" install
+}
 
-# ─── System Update ───────────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Updating system..."
-    sudo apt-get update && sudo apt-get upgrade -y
-fi
+install_dwmblocks_runner() {
+  log "Installing dwm status bar runner"
+  mkdir -p "$USER_BIN_DIR" "$USER_CONFIG_DIR/dwmblocks"
+  install -m 0755 "$REPO_DIR/scripts/dwmblocks.sh" "$USER_BIN_DIR/dwmblocks"
+  cp "$REPO_DIR/configs/dwmblocks/dwmblocks.conf" "$USER_CONFIG_DIR/dwmblocks/dwmblocks.conf"
+}
 
-# ─── Packages ────────────────────────────────────────────────────────────
-PACKAGES_CORE=(
-    xorg xorg-dev xbacklight xbindkeys xvkbd xinput
-    build-essential sxhkd xdotool dbus-x11
-    libnotify-bin libnotify-dev libusb-0.1-4
-)
+install_wallpapers() {
+  log "Installing wallpapers"
+  mkdir -p "$USER_WALL_DIR"
+  cp -f "$REPO_DIR"/assets/wallpapers/* "$USER_WALL_DIR/" 2>/dev/null || true
+}
 
-PACKAGES_UI=( rofi dunst feh lxappearance network-manager-gnome )
-PACKAGES_FILE_MANAGER=( thunar thunar-archive-plugin thunar-volman gvfs-backends dialog mtools smbclient cifs-utils unzip )
-PACKAGES_AUDIO=( pavucontrol pulsemixer pamixer pipewire-audio )
-PACKAGES_UTILITIES=( avahi-daemon acpi acpid xfce4-power-manager flameshot qimgv xdg-user-dirs-gtk fd-find zram-tools )
-PACKAGES_TERMINAL=( suckless-tools alacritty )
-PACKAGES_FONTS=( fonts-recommended fonts-font-awesome fonts-terminus )
-PACKAGES_BUILD=( cmake meson ninja-build curl pkg-config git wget ca-certificates gnupg )
+install_xinitrc() {
+  log "Installing ~/.xinitrc"
+  install -m 0755 "$REPO_DIR/configs/xinit/xinitrc" "$HOME/.xinitrc"
+}
 
-# ─── Base Installation ───────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing base packages..."
-    sudo apt-get install -y "${PACKAGES_CORE[@]}" "${PACKAGES_UI[@]}" \
-        "${PACKAGES_FILE_MANAGER[@]}" "${PACKAGES_AUDIO[@]}" \
-        "${PACKAGES_UTILITIES[@]}" "${PACKAGES_TERMINAL[@]}" \
-        "${PACKAGES_FONTS[@]}" "${PACKAGES_BUILD[@]}"
-fi
+configure_tlp_and_input() {
+  log "Enabling TLP power management"
+  $SUDO systemctl enable tlp
+  $SUDO systemctl start tlp
 
-# ─── Zen Kernel ─────────────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing Zen Kernel..."
-    if sudo apt-get install -y linux-image-zen linux-headers-zen 2>/dev/null; then
-        msg "Zen Kernel installed successfully."
-    else
-        msg "Zen Kernel not found, installing fallback kernel..."
-        sudo apt-get install -y linux-image-amd64 linux-headers-amd64
-    fi
-    sudo update-grub
-fi
+  log "Applying ThinkPad T480 touchpad/trackpoint tweaks"
+  $SUDO mkdir -p /etc/X11/xorg.conf.d
+  $SUDO tee /etc/X11/xorg.conf.d/30-thinkpad-input.conf >/dev/null <<'EOT'
+Section "InputClass"
+    Identifier "ThinkPad Touchpad"
+    MatchProduct "SynPS/2 Synaptics TouchPad"
+    Driver "libinput"
+    Option "Tapping" "on"
+    Option "NaturalScrolling" "true"
+    Option "DisableWhileTyping" "true"
+    Option "AccelSpeed" "0.2"
+EndSection
 
-# ─── GPU Detection ──────────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Detecting graphics card..."
-    GPU=$(lspci | grep -E "VGA|3D" | tr '[:upper:]' '[:lower:]')
+Section "InputClass"
+    Identifier "ThinkPad TrackPoint"
+    MatchProduct "TPPS/2 IBM TrackPoint"
+    Driver "libinput"
+    Option "AccelSpeed" "0.4"
+    Option "MiddleEmulation" "on"
+EndSection
+EOT
 
-    if echo "$GPU" | grep -q "nvidia"; then
-        msg "Detected NVIDIA GPU → installing drivers..."
-        sudo apt-get install -y nvidia-driver nvidia-settings
-        sudo systemctl enable nvidia-persistenced || true
+  log "Allowing video group brightness control"
+  $SUDO tee /etc/udev/rules.d/90-backlight.rules >/dev/null <<'EOT'
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chgrp video /sys/class/backlight/%k/brightness"
+ACTION=="add", SUBSYSTEM=="backlight", RUN+="/bin/chmod g+w /sys/class/backlight/%k/brightness"
+EOT
+  $SUDO udevadm control --reload
+}
 
-    elif echo "$GPU" | grep -q "amd"; then
-        msg "Detected AMD GPU → installing Mesa/AMDGPU drivers..."
-        sudo apt-get install -y firmware-amd-graphics mesa-vulkan-drivers xserver-xorg-video-amdgpu
+sync_repo_helpers() {
+  if [ -f "$REPO_DIR/.gitmodules" ]; then
+    log "Updating repository submodules"
+    git -C "$REPO_DIR" submodule update --init --recursive
+  fi
+}
 
-    elif echo "$GPU" | grep -q "intel"; then
-        msg "Detected Intel GPU → installing Intel drivers..."
-        sudo apt-get install -y firmware-misc-nonfree intel-media-va-driver-non-free i965-va-driver mesa-vulkan-drivers
+main() {
+  require_cmd git
+  require_cmd make
+  ensure_sudo
 
-    else
-        msg "No supported GPU detected. Skipping GPU driver setup."
-    fi
-fi
+  sync_repo_helpers
+  install_packages
+  prepare_dwm_source
+  build_install_dwm
+  install_dwmblocks_runner
+  install_wallpapers
+  install_xinitrc
+  configure_tlp_and_input
 
-# ─── Google Chrome ──────────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Installing Google Chrome Stable..."
-    wget -q -O- https://dl.google.com/linux/linux_signing_key.pub | sudo gpg --dearmor -o /usr/share/keyrings/google-chrome.gpg
-    echo "deb [arch=amd64 signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main" | \
-        sudo tee /etc/apt/sources.list.d/google-chrome.list
-    sudo apt-get update
-    sudo apt-get install -y google-chrome-stable || msg "Chrome installation failed!"
-fi
+  log "Installation complete. Reboot, login on tty, then run: startx"
+}
 
-# ─── ZRAM Setup ─────────────────────────────────────────────────────────
-if [ "$ONLY_CONFIG" = false ]; then
-    msg "Configuring ZRAM..."
-    sudo tee /etc/default/zramswap >/dev/null <<EOF
-ENABLED=true
-PERCENT=50
-PRIORITY=100
-ALGO=lz4
-EOF
-    sudo systemctl enable zramswap
-    sudo systemctl start zramswap
-fi
-
-# ─── DWM/ST Auto-Fetch & Build ──────────────────────────────────────────
-msg "Preparing DWM configuration..."
-mkdir -p "$CONFIG_DIR"
-
-# Prefer local configs, otherwise auto-clone
-if [ -d "$SCRIPT_DIR/suckless" ]; then
-    msg "Found 'suckless/' directory → copying configs..."
-    cp -r "$SCRIPT_DIR/suckless/"* "$CONFIG_DIR"/
-else
-    found_local=false
-    for dir in dwm st slstatus; do
-        if [ -d "$SCRIPT_DIR/$dir" ]; then
-            msg "Found local $dir folder → copying..."
-            cp -r "$SCRIPT_DIR/$dir" "$CONFIG_DIR/"
-            found_local=true
-        fi
-    done
-
-    if [ "$found_local" = false ]; then
-        msg "No local configs found → cloning official suckless sources..."
-        git clone https://git.suckless.org/dwm "$CONFIG_DIR/dwm"
-        git clone https://git.suckless.org/st "$CONFIG_DIR/st"
-    fi
-fi
-
-# Build all available suckless components
-msg "Building DWM & ST..."
-for tool in dwm st; do
-    if [ -d "$CONFIG_DIR/$tool" ]; then
-        cd "$CONFIG_DIR/$tool"
-        make && sudo make clean install || die "Failed to build $tool"
-    else
-        msg "Skipping missing $tool folder..."
-    fi
-done
-
-# ─── Desktop Entries ─────────────────────────────────────────────────────
-sudo mkdir -p /usr/share/xsessions
-cat <<EOF | sudo tee /usr/share/xsessions/dwm.desktop >/dev/null
-[Desktop Entry]
-Name=dwm
-Comment=Dynamic Window Manager
-Exec=dwm
-Type=XSession
-EOF
-
-mkdir -p ~/.local/share/applications
-cat > ~/.local/share/applications/alacritty.desktop << EOF
-[Desktop Entry]
-Name=Alacritty
-Comment=GPU accelerated terminal
-Exec=alacritty
-Icon=utilities-terminal
-Terminal=false
-Type=Application
-Categories=System;TerminalEmulator;
-EOF
-
-# ─── Wallpaper Setup ────────────────────────────────────────────────────
-if [ -f "$SCRIPT_DIR/wallpaper.png" ]; then
-    msg "Applying wallpaper..."
-    mkdir -p "$HOME/.config/dwm"
-    cp "$SCRIPT_DIR/wallpaper.png" "$HOME/.config/dwm/"
-    feh --bg-fill "$HOME/.config/dwm/wallpaper.png" || true
-else
-    msg "No wallpaper.png found, skipping."
-fi
-
-# ─── Done ───────────────────────────────────────────────────────────────
-echo -e "\n${GREEN}✅ Installation complete!${NC}"
-echo "Zen Kernel, ZRAM, GPU drivers, Chrome, and DWM/ST are ready."
-echo "Reboot now to start DWM on Debian 13."
+main "$@"

@@ -1,0 +1,27 @@
+#!/bin/sh
+set -eu
+
+WALLDIR="$HOME/.local/share/wallpapers"
+
+# Start per-user services for PulseAudio/PipeWire aware apps.
+if command -v dbus-update-activation-environment >/dev/null 2>&1; then
+  dbus-update-activation-environment --systemd DISPLAY XAUTHORITY >/dev/null 2>&1 || true
+fi
+
+# Keyboard rate tuned for ThinkPad typing.
+xset r rate 200 40
+
+# Start status bar first so dwm can read root window name updates.
+if command -v dwmblocks >/dev/null 2>&1; then
+  pkill -x dwmblocks >/dev/null 2>&1 || true
+  dwmblocks >/dev/null 2>&1 &
+fi
+
+# Load wallpaper from the managed wallpaper directory.
+if command -v feh >/dev/null 2>&1; then
+  if [ -d "$WALLDIR" ] && [ "$(find "$WALLDIR" -maxdepth 1 -type f | wc -l)" -gt 0 ]; then
+    feh --bg-fill --randomize "$WALLDIR"/*
+  fi
+fi
+
+exec dwm
